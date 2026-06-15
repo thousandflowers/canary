@@ -59,6 +59,52 @@ ensure_line() {
   fi
 }
 
+# --- wire the bird into Claude Code's statusLine (best-effort, non-destructive)
+# Appends `; bash canary-statusline.sh` to any existing statusLine command (e.g.
+# caveman's) so both render — Claude Code allows only one statusLine command, and
+# caveman prints [CAVEMAN] with no trailing newline, so the bird lands beside it.
+wire_statusline() {
+  cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  settings="$cfg/settings.json"
+  sl="$CANARY_HOME/canary-statusline.sh"
+  add="bash \"$sl\""
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "canary: jq not found — skipping statusline. add manually:"
+    echo "  \"statusLine\": { \"type\": \"command\", \"command\": \"<existing>; $add\" }"
+    return 0
+  fi
+  [ -d "$cfg" ] || { echo "canary: no Claude Code config at $cfg — skipping statusline"; return 0; }
+  [ -f "$settings" ] || echo '{}' > "$settings"
+
+  # JSONC tolerance: if jq can't parse it (comments?), don't risk corrupting it
+  if ! jq empty "$settings" >/dev/null 2>&1; then
+    echo "canary: $settings isn't plain JSON (comments?) — add manually:"
+    echo "  append '; $add' to your statusLine.command"
+    return 0
+  fi
+
+  cur=$(jq -r '.statusLine.command // ""' "$settings")
+  case "$cur" in
+    *canary-statusline*) echo "canary: statusline already wired"; return 0 ;;
+  esac
+  if [ -n "$cur" ]; then
+    newcmd="$cur; $add"        # keep caveman (or whatever exists), append the bird
+  else
+    newcmd="$add"
+  fi
+
+  tmp=$(mktemp 2>/dev/null || echo "$settings.canary.tmp")
+  if jq --arg c "$newcmd" '.statusLine = {type:"command", command:$c}' "$settings" > "$tmp"; then
+    cp "$settings" "$settings.canary.bak"
+    mv "$tmp" "$settings"
+    echo "canary: statusline wired into $settings (backup: $settings.canary.bak)"
+  else
+    rm -f "$tmp"
+    echo "canary: could not update $settings — add '; $add' to statusLine.command manually"
+  fi
+}
+
 main() {
   info=$(detect_rc)
   shell_name=${info%%|*}
@@ -75,6 +121,11 @@ main() {
     line="[ -f \"$CANARY_HOME/$asset\" ] && . \"$CANARY_HOME/$asset\""
   fi
   ensure_line "$rc" "$line"
+
+  # Claude Code statusline (optional; needs jq + a Claude Code config dir)
+  fetch "canary-statusline.sh" "$CANARY_HOME/canary-statusline.sh" 2>/dev/null \
+    && chmod +x "$CANARY_HOME/canary-statusline.sh" 2>/dev/null || true
+  wire_statusline || true
 
   printf '\n ▗███▖\n▐ O ▌>   canary installed for %s\n\n' "$shell_name"
   echo "open a new shell (or: source $rc) to meet your bird."

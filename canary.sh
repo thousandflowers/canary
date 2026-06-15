@@ -23,6 +23,8 @@ _CANARY_LOADED=1
 : "${CANARY_LENS:=}"          # space-separated lengths of last 20 commands
 : "${CANARY_ACTIVE_SECONDS:=0}"               # accrued active (non-idle) seconds
 : "${CANARY_LAST_ACTIVE:=$CANARY_START_TIME}" # epoch of the last recorded command
+: "${CANARY_STATE_FILE:=$HOME/.canary/canary-state}"  # the Claude Code statusline reads this
+[ -d "${CANARY_STATE_FILE%/*}" ] || mkdir -p "${CANARY_STATE_FILE%/*}" 2>/dev/null
 
 # --- tunables ----------------------------------------------------------------
 _CANARY_LEN_WINDOW=20                 # rolling window for avg prompt length
@@ -57,6 +59,8 @@ _canary_record() {
   set -- $CANARY_LENS
   while [ "$#" -gt "$_CANARY_LEN_WINDOW" ]; do shift; done
   CANARY_LENS="$*"
+
+  _canary_write_state
 }
 
 # --- rolling average of recorded lengths -------------------------------------
@@ -75,6 +79,14 @@ _canary_avg() {
     sum=$(( sum + x ))
   done
   echo $(( sum / n ))
+}
+
+# --- persist session state for the Claude Code statusline --------------------
+_canary_write_state() {
+  [ -n "${CANARY_STATE_FILE:-}" ] || return 0
+  printf 'timestamp_start=%s\nprompt_count=%s\navg_prompt_len=%s\nactive_seconds=%s\n' \
+    "$CANARY_START_TIME" "$CANARY_PROMPT_COUNT" "$(_canary_avg)" "$CANARY_ACTIVE_SECONDS" \
+    > "$CANARY_STATE_FILE" 2>/dev/null
 }
 
 # --- map a 0-100 score to the bird art, set CANARY_BIRD, print it ------------
@@ -129,6 +141,7 @@ _canary_precmd() {
     CANARY_ACTIVE_SECONDS=0
     CANARY_LAST_ACTIVE=$CANARY_START_TIME
     unset CANARY_RESET
+    _canary_write_state
   fi
 
   # bash: arm the preexec flag for the next typed command
@@ -149,6 +162,7 @@ canary() {
     reset|--reset)
       CANARY_START_TIME=$(date +%s); CANARY_PROMPT_COUNT=0; CANARY_LENS=""
       CANARY_ACTIVE_SECONDS=0; CANARY_LAST_ACTIVE=$CANARY_START_TIME
+      _canary_write_state
       echo "canary: reset"; _canary_render "$(_canary_score)" show ;;
     off)
       CANARY_DISABLED=1; echo "canary: off (unset CANARY_DISABLED to re-enable)" ;;

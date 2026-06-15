@@ -14,6 +14,8 @@ set -q CANARY_PROMPT_COUNT; or set -g CANARY_PROMPT_COUNT 0
 set -q CANARY_LENS;        or set -g CANARY_LENS
 set -q CANARY_ACTIVE_SECONDS; or set -g CANARY_ACTIVE_SECONDS 0
 set -q CANARY_LAST_ACTIVE;    or set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
+set -q CANARY_STATE_FILE;     or set -g CANARY_STATE_FILE $HOME/.canary/canary-state
+mkdir -p (dirname $CANARY_STATE_FILE) 2>/dev/null
 
 # --- tunables (night penalty configurable; CANARY_NIGHT_MULT=100 disables) ---
 set -g _CANARY_LEN_WINDOW 20
@@ -40,6 +42,8 @@ function _canary_record --on-event fish_preexec
     if test $n -gt $_CANARY_LEN_WINDOW
         set -e CANARY_LENS[1..(math $n - $_CANARY_LEN_WINDOW)]
     end
+
+    _canary_write_state
 end
 
 # --- rolling average ---------------------------------------------------------
@@ -54,6 +58,14 @@ function _canary_avg
         set sum (math $sum + $x)
     end
     math "floor($sum / $n)"
+end
+
+# --- persist session state for the Claude Code statusline --------------------
+function _canary_write_state
+    test -n "$CANARY_STATE_FILE"; or return
+    printf 'timestamp_start=%s\nprompt_count=%s\navg_prompt_len=%s\nactive_seconds=%s\n' \
+        $CANARY_START_TIME $CANARY_PROMPT_COUNT (_canary_avg) $CANARY_ACTIVE_SECONDS \
+        >$CANARY_STATE_FILE 2>/dev/null
 end
 
 # --- map score -> art, set CANARY_BIRD, print -------------------------------
@@ -111,6 +123,7 @@ function _canary_compute
         set -g CANARY_ACTIVE_SECONDS 0
         set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
         set -e CANARY_RESET
+        _canary_write_state
     end
 
     set -l score (_canary_score)
@@ -133,6 +146,7 @@ function canary
             set -g CANARY_LENS
             set -g CANARY_ACTIVE_SECONDS 0
             set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
+            _canary_write_state
             echo "canary: reset"
             _canary_render (_canary_score) show
         case off

@@ -98,6 +98,26 @@ open all afternoon — the bird only ages while you actually work.
 a deep flow session and a frustrating debug both look identical to it. treat
 the bird as a playful timer, not a doctor.
 
+## Claude Code statusline
+
+canary can perch next to caveman's `[CAVEMAN]` badge in Claude Code's status line:
+
+```
+[CAVEMAN] ▗███▖ tired · 58m · 41p
+          ▐ - ▌>
+```
+
+`install.sh` wires this automatically (needs `jq`): it drops `canary-statusline.sh`
+into `~/.canary/` and merges a `statusLine` command into
+`$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`). If a status line already
+exists (e.g. caveman's), canary is **appended** to it, not replacing it — Claude
+Code allows only one status line command, and caveman emits no trailing newline so
+the bird lands right beside the badge. A backup is saved to `settings.json.canary.bak`.
+
+The status line reads `~/.canary/canary-state`, refreshed by canary's shell hook
+every command, so the prompt bird and the status line always agree.
+`sh uninstall.sh` removes only canary's segment, leaving the rest intact.
+
 ## uninstall
 
 ```sh
