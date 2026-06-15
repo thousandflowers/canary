@@ -58,7 +58,10 @@ elif [ "$score" -le 90 ]; then state=worn;   top='▗▓▓▓▖';  eye='~'; be
 else                           state=dead;   top='▗░░░▖';  eye='x'; beak='v'
 fi
 
-# line 1 (a leading space separates it from [CAVEMAN]); line 2 indented so the
-# bird's lower half sits under its upper half when the default badge is shown.
-printf ' %s %s · %dm · %dp\n          ▐ %s ▌%s' \
-  "$top" "$state" "$min" "$prompt_count" "$eye" "$beak"
+# Claude Code strips leading whitespace from each status line and re-indents
+# continuation lines by its own 2 spaces — so leading-space alignment is futile,
+# and a bird half glued to the variable-width [CAVEMAN] line can never line up.
+# Fix: stats ride along the badge line; the two bird rows live entirely on their
+# own continuation lines, where Claude Code indents them equally → they align.
+printf ' %s · %dm · %dp\n%s\n▐ %s ▌%s' \
+  "$state" "$min" "$prompt_count" "$top" "$eye" "$beak"
