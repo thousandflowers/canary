@@ -24,23 +24,23 @@ Type "echo 'just sat down'"
 Enter
 Sleep 1500ms
 
-# fast-forward ~40 min -> chirpy
-Type "CANARY_START_TIME=$(( $(date +%s) - 40*60 )); CANARY_PROMPT_COUNT=12"
+# fast-forward ~60 active min -> chirpy
+Type "CANARY_ACTIVE_SECONDS=$((60*60)); CANARY_PROMPT_COUNT=25"
 Enter
 Sleep 1500ms
 
-# ~80 min, 45 commands -> tired
-Type "CANARY_START_TIME=$(( $(date +%s) - 80*60 )); CANARY_PROMPT_COUNT=45"
+# ~120 active min, 45 commands -> tired
+Type "CANARY_ACTIVE_SECONDS=$((120*60)); CANARY_PROMPT_COUNT=45"
 Enter
 Sleep 1500ms
 
-# ~110 min, 70 commands -> worn
-Type "CANARY_START_TIME=$(( $(date +%s) - 110*60 )); CANARY_PROMPT_COUNT=70"
+# ~180 active min, 60 commands -> worn
+Type "CANARY_ACTIVE_SECONDS=$((180*60)); CANARY_PROMPT_COUNT=60"
 Enter
 Sleep 1500ms
 
-# ~140 min, 90 commands -> dead
-Type "CANARY_START_TIME=$(( $(date +%s) - 140*60 )); CANARY_PROMPT_COUNT=90"
+# ~240 active min, 90 commands -> dead
+Type "CANARY_ACTIVE_SECONDS=$((240*60)); CANARY_PROMPT_COUNT=90"
 Enter
 Sleep 2500ms
 

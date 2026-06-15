@@ -67,6 +67,12 @@ CANARY_DISABLED=1       # bird sleeps (no output)
 CANARY_RESET=1          # fresh session, bird young again
 CANARY_SHOW_SCORE=1     # show the fatigue number 0–100
 
+# quieter: only show the bird once it actually matters
+CANARY_MIN_SCORE=46     # draw only at tired+ (0 = always, default; 71 = worn+)
+
+# idle-aware: coffee/lunch breaks don't age the bird — only active work counts
+CANARY_IDLE_THRESHOLD=300  # a gap longer than this (sec) stops the clock (default 300 = 5 min)
+
 # circadian penalty — defaults assume a daytime schedule.
 # night owl? tune or switch it off:
 CANARY_NIGHT_START=22   # hour the penalty starts (default 22)
@@ -83,6 +89,10 @@ night   × CANARY_NIGHT_MULT/100
 
 0–20 fresh   21–45 chirpy   46–70 tired   71–90 worn   91–100 dead
 ```
+
+*minutes* = **active** time only: gaps longer than `CANARY_IDLE_THRESHOLD`
+(default 5 min) are treated as breaks and don't count. leave the terminal
+open all afternoon — the bird only ages while you actually work.
 
 **honest caveat:** this is a crude *activity* proxy, not real cognitive load.
 a deep flow session and a frustrating debug both look identical to it. treat

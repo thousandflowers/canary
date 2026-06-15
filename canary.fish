@@ -12,17 +12,28 @@ set -g _CANARY_LOADED 1
 set -q CANARY_START_TIME;  or set -g CANARY_START_TIME (date +%s)
 set -q CANARY_PROMPT_COUNT; or set -g CANARY_PROMPT_COUNT 0
 set -q CANARY_LENS;        or set -g CANARY_LENS
+set -q CANARY_ACTIVE_SECONDS; or set -g CANARY_ACTIVE_SECONDS 0
+set -q CANARY_LAST_ACTIVE;    or set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
 
 # --- tunables (night penalty configurable; CANARY_NIGHT_MULT=100 disables) ---
 set -g _CANARY_LEN_WINDOW 20
 set -q CANARY_NIGHT_START; or set -g CANARY_NIGHT_START 22
 set -q CANARY_NIGHT_END;   or set -g CANARY_NIGHT_END 7
 set -q CANARY_NIGHT_MULT;  or set -g CANARY_NIGHT_MULT 130
+set -q CANARY_IDLE_THRESHOLD; or set -g CANARY_IDLE_THRESHOLD 300
+set -q CANARY_MIN_SCORE;      or set -g CANARY_MIN_SCORE 0
 
 # --- record each command (fish fires fish_preexec with the command line) -----
 function _canary_record --on-event fish_preexec
     set -l cmd $argv[1]
     test -n "$cmd"; or return
+
+    # accrue active time, ignoring idle gaps (coffee breaks don't tire the bird)
+    set -l now (date +%s)
+    set -l gap (math $now - $CANARY_LAST_ACTIVE)
+    test $gap -le $CANARY_IDLE_THRESHOLD; and set -g CANARY_ACTIVE_SECONDS (math $CANARY_ACTIVE_SECONDS + $gap)
+    set -g CANARY_LAST_ACTIVE $now
+
     set -g CANARY_PROMPT_COUNT (math $CANARY_PROMPT_COUNT + 1)
     set -ga CANARY_LENS (string length -- "$cmd")
     set -l n (count $CANARY_LENS)
@@ -75,8 +86,7 @@ end
 
 # --- compute the 0-100 fatigue score from current session state -------------
 function _canary_score
-    set -l now (date +%s)
-    set -l min (math "floor(($now - $CANARY_START_TIME) / 60)")
+    set -l min (math "floor($CANARY_ACTIVE_SECONDS / 60)")
     set -l avglen (_canary_avg)
     set -l s (math "floor($min / 3 + $CANARY_PROMPT_COUNT / 2 + $avglen / 10)")
 
@@ -98,10 +108,14 @@ function _canary_compute
         set -g CANARY_START_TIME (date +%s)
         set -g CANARY_PROMPT_COUNT 0
         set -g CANARY_LENS
+        set -g CANARY_ACTIVE_SECONDS 0
+        set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
         set -e CANARY_RESET
     end
 
-    _canary_render (_canary_score)
+    set -l score (_canary_score)
+    test $score -lt $CANARY_MIN_SCORE; and return   # stay quiet below threshold
+    _canary_render $score
 end
 
 # --- `canary` command: on-demand status / control ---------------------------
@@ -117,6 +131,8 @@ function canary
             set -g CANARY_START_TIME (date +%s)
             set -g CANARY_PROMPT_COUNT 0
             set -g CANARY_LENS
+            set -g CANARY_ACTIVE_SECONDS 0
+            set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
             echo "canary: reset"
             _canary_render (_canary_score) show
         case off

@@ -21,12 +21,16 @@ _CANARY_LOADED=1
 : "${CANARY_START_TIME:=$(date +%s)}"
 : "${CANARY_PROMPT_COUNT:=0}"
 : "${CANARY_LENS:=}"          # space-separated lengths of last 20 commands
+: "${CANARY_ACTIVE_SECONDS:=0}"               # accrued active (non-idle) seconds
+: "${CANARY_LAST_ACTIVE:=$CANARY_START_TIME}" # epoch of the last recorded command
 
 # --- tunables ----------------------------------------------------------------
 _CANARY_LEN_WINDOW=20                 # rolling window for avg prompt length
 : "${CANARY_NIGHT_START:=22}"         # circadian penalty starts at/after this hour
 : "${CANARY_NIGHT_END:=7}"            # ...and before this hour
 : "${CANARY_NIGHT_MULT:=130}"         # penalty as percent: 100 = off, 130 = x1.3
+: "${CANARY_IDLE_THRESHOLD:=300}"     # gaps longer than this (sec) count as a break, not work
+: "${CANARY_MIN_SCORE:=0}"            # only draw the bird at/above this score (0 = always; 46 = tired+)
 # score = minutes/3 + count/2 + avglen/10   (each term caps a band, total 0-100)
 #   == (min/120*40) + (count/80*40) + (avglen/200*20)   from the spec
 # NOTE: a playful *activity* proxy, not a real measure of cognitive load.
@@ -38,6 +42,13 @@ _canary_record() {
   cmd=$1
   # ignore empty lines (bare Enter)
   [ -z "$cmd" ] && return 0
+
+  # accrue active time, ignoring idle gaps (coffee breaks don't tire the bird)
+  now=$(date +%s)
+  gap=$(( now - CANARY_LAST_ACTIVE ))
+  [ "$gap" -le "$CANARY_IDLE_THRESHOLD" ] && CANARY_ACTIVE_SECONDS=$(( CANARY_ACTIVE_SECONDS + gap ))
+  CANARY_LAST_ACTIVE=$now
+
   CANARY_PROMPT_COUNT=$(( CANARY_PROMPT_COUNT + 1 ))
   len=${#cmd}
   CANARY_LENS="$CANARY_LENS $len"
@@ -93,8 +104,7 @@ $l2"
 
 # --- compute the 0-100 fatigue score from current session state -------------
 _canary_score() {
-  now=$(date +%s)
-  min=$(( (now - CANARY_START_TIME) / 60 ))
+  min=$(( CANARY_ACTIVE_SECONDS / 60 ))      # active minutes (idle excluded)
   avglen=$(_canary_avg)
   s=$(( min / 3 + CANARY_PROMPT_COUNT / 2 + avglen / 10 ))
 
@@ -116,13 +126,17 @@ _canary_precmd() {
     CANARY_START_TIME=$(date +%s)
     CANARY_PROMPT_COUNT=0
     CANARY_LENS=""
+    CANARY_ACTIVE_SECONDS=0
+    CANARY_LAST_ACTIVE=$CANARY_START_TIME
     unset CANARY_RESET
   fi
 
-  _canary_render "$(_canary_score)"
-
   # bash: arm the preexec flag for the next typed command
   _CANARY_AT_PROMPT=1
+
+  score=$(_canary_score)
+  [ "$score" -lt "$CANARY_MIN_SCORE" ] && return 0   # stay quiet below the threshold
+  _canary_render "$score"
 }
 
 # --- `canary` command: on-demand status / control ---------------------------
@@ -134,6 +148,7 @@ canary() {
       _canary_score ;;
     reset|--reset)
       CANARY_START_TIME=$(date +%s); CANARY_PROMPT_COUNT=0; CANARY_LENS=""
+      CANARY_ACTIVE_SECONDS=0; CANARY_LAST_ACTIVE=$CANARY_START_TIME
       echo "canary: reset"; _canary_render "$(_canary_score)" show ;;
     off)
       CANARY_DISABLED=1; echo "canary: off (unset CANARY_DISABLED to re-enable)" ;;
