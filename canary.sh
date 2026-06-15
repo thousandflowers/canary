@@ -22,12 +22,14 @@ _CANARY_LOADED=1
 : "${CANARY_PROMPT_COUNT:=0}"
 : "${CANARY_LENS:=}"          # space-separated lengths of last 20 commands
 
-# --- tunables (named constants, no magic numbers) ----------------------------
-_CANARY_LEN_WINDOW=20         # rolling window for avg prompt length
-_CANARY_NIGHT_START=22        # circadian penalty kicks in at/after this hour
-_CANARY_NIGHT_END=7           # ...and before this hour
+# --- tunables ----------------------------------------------------------------
+_CANARY_LEN_WINDOW=20                 # rolling window for avg prompt length
+: "${CANARY_NIGHT_START:=22}"         # circadian penalty starts at/after this hour
+: "${CANARY_NIGHT_END:=7}"            # ...and before this hour
+: "${CANARY_NIGHT_MULT:=130}"         # penalty as percent: 100 = off, 130 = x1.3
 # score = minutes/3 + count/2 + avglen/10   (each term caps a band, total 0-100)
 #   == (min/120*40) + (count/80*40) + (avglen/200*20)   from the spec
+# NOTE: a playful *activity* proxy, not a real measure of cognitive load.
 
 # --- record one executed command --------------------------------------------
 _canary_record() {
@@ -67,6 +69,7 @@ _canary_avg() {
 # --- map a 0-100 score to the bird art, set CANARY_BIRD, print it ------------
 _canary_render() {
   score=$1
+  force=${2:-}                 # non-empty -> always show the score line
   if   [ "$score" -le 20 ]; then name=fresh;  l1=' ▗███▖';  l2='▐ ◉ ▌>'
   elif [ "$score" -le 45 ]; then name=chirpy; l1=' ▗███▖~'; l2='▐ ^ ▌>'
   elif [ "$score" -le 70 ]; then name=tired;  l1=' ▗███▖';  l2='▐ - ▌>'
@@ -77,7 +80,7 @@ _canary_render() {
   CANARY_BIRD="$l1
 $l2"
 
-  if [ -n "${CANARY_SHOW_SCORE:-}" ]; then
+  if [ -n "${CANARY_SHOW_SCORE:-}" ] || [ -n "$force" ]; then
     printf '%s\n%s  [%s %s]\n' "$l1" "$l2" "$name" "$score"
   else
     printf '%s\n%s\n' "$l1" "$l2"
@@ -88,11 +91,27 @@ $l2"
   fi
 }
 
-# --- per-prompt: recompute fatigue and draw the bird -------------------------
+# --- compute the 0-100 fatigue score from current session state -------------
+_canary_score() {
+  now=$(date +%s)
+  min=$(( (now - CANARY_START_TIME) / 60 ))
+  avglen=$(_canary_avg)
+  s=$(( min / 3 + CANARY_PROMPT_COUNT / 2 + avglen / 10 ))
+
+  # circadian penalty (configurable; set CANARY_NIGHT_MULT=100 to disable)
+  hour=$(( 10#$(date +%H) ))
+  if [ "$hour" -ge "$CANARY_NIGHT_START" ] || [ "$hour" -lt "$CANARY_NIGHT_END" ]; then
+    s=$(( s * CANARY_NIGHT_MULT / 100 ))
+  fi
+
+  [ "$s" -gt 100 ] && s=100
+  echo "$s"
+}
+
+# --- per-prompt: honor reset, recompute, draw -------------------------------
 _canary_precmd() {
   [ -n "${CANARY_DISABLED:-}" ] && return 0
 
-  # honor reset request
   if [ -n "${CANARY_RESET:-}" ]; then
     CANARY_START_TIME=$(date +%s)
     CANARY_PROMPT_COUNT=0
@@ -100,25 +119,31 @@ _canary_precmd() {
     unset CANARY_RESET
   fi
 
-  now=$(date +%s)
-  min=$(( (now - CANARY_START_TIME) / 60 ))
-  count=$CANARY_PROMPT_COUNT
-  avglen=$(_canary_avg)
-
-  score=$(( min / 3 + count / 2 + avglen / 10 ))
-
-  # circadian penalty: late night / early morning is 1.3x more tiring
-  hour=$(( 10#$(date +%H) ))
-  if [ "$hour" -ge "$_CANARY_NIGHT_START" ] || [ "$hour" -lt "$_CANARY_NIGHT_END" ]; then
-    score=$(( score * 13 / 10 ))
-  fi
-
-  [ "$score" -gt 100 ] && score=100
-
-  _canary_render "$score"
+  _canary_render "$(_canary_score)"
 
   # bash: arm the preexec flag for the next typed command
   _CANARY_AT_PROMPT=1
+}
+
+# --- `canary` command: on-demand status / control ---------------------------
+canary() {
+  case "${1:-status}" in
+    status|--status|"")
+      _canary_render "$(_canary_score)" show ;;
+    score|--score)
+      _canary_score ;;
+    reset|--reset)
+      CANARY_START_TIME=$(date +%s); CANARY_PROMPT_COUNT=0; CANARY_LENS=""
+      echo "canary: reset"; _canary_render "$(_canary_score)" show ;;
+    off)
+      CANARY_DISABLED=1; echo "canary: off (unset CANARY_DISABLED to re-enable)" ;;
+    on)
+      unset CANARY_DISABLED; echo "canary: on" ;;
+    -h|--help|help)
+      printf 'usage: canary [status|score|reset|on|off]\n' ;;
+    *)
+      printf 'canary: unknown command: %s\n' "$1" >&2; return 1 ;;
+  esac
 }
 
 # --- hook registration, per shell -------------------------------------------
