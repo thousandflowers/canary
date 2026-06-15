@@ -51,9 +51,9 @@ function _canary_render
     set -l force $argv[2]   # non-empty -> always show the score line
     set -l name; set -l l1; set -l l2
     if test $score -le 20
-        set name fresh;  set l1 ' ▗███▖';  set l2 '▐ ◉ ▌>'
+        set name fresh;  set l1 ' ▗███▖';   set l2 '▐ O ▌>'
     else if test $score -le 45
-        set name chirpy; set l1 ' ▗███▖~'; set l2 '▐ ^ ▌>'
+        set name chirpy; set l1 ' ▗███▖ ♪'; set l2 '▐ ^ ▌>'
     else if test $score -le 70
         set name tired;  set l1 ' ▗███▖';  set l2 '▐ - ▌>'
     else if test $score -le 90

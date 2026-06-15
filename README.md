@@ -8,8 +8,8 @@ no color. no internet. no dependency. just UTF-8 block art + your shell.
 ## bird
 
 ```
- ▗███▖        ▗███▖~       ▗███▖        ▗▓▓▓▖        ▗░░░▖
-▐ ◉ ▌>       ▐ ^ ▌>       ▐ - ▌>       ▐ ~ ▌>       ░ x ▌v
+ ▗███▖        ▗███▖♪       ▗███▖        ▗▓▓▓▖        ▗░░░▖
+▐ O ▌>       ▐ ^ ▌>       ▐ - ▌>       ▐ ~ ▌>       ░ x ▌v
  fresh        chirpy       tired        worn         dead
 ```
 
@@ -17,7 +17,7 @@ in your real prompt it perches just above the line you type:
 
 ```
  ▗███▖
-▐ ◉ ▌>
+▐ O ▌>
 ❯ git status
 ```
 
@@ -26,8 +26,9 @@ late night counts extra. dead bird = go rest.
 
 ## demo
 
-animated version lives at `assets/demo.gif` — regenerate any time with
-[vhs](https://github.com/charmbracelet/vhs):
+![canary wilting across a session](assets/demo.gif)
+
+regenerate any time with [vhs](https://github.com/charmbracelet/vhs):
 
 ```sh
 vhs demo.tape

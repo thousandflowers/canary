@@ -76,7 +76,7 @@ main() {
   fi
   ensure_line "$rc" "$line"
 
-  printf '\n ▗███▖\n▐ ◉ ▌>   canary installed for %s\n\n' "$shell_name"
+  printf '\n ▗███▖\n▐ O ▌>   canary installed for %s\n\n' "$shell_name"
   echo "open a new shell (or: source $rc) to meet your bird."
 }
 

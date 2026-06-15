@@ -70,8 +70,8 @@ _canary_avg() {
 _canary_render() {
   score=$1
   force=${2:-}                 # non-empty -> always show the score line
-  if   [ "$score" -le 20 ]; then name=fresh;  l1=' ▗███▖';  l2='▐ ◉ ▌>'
-  elif [ "$score" -le 45 ]; then name=chirpy; l1=' ▗███▖~'; l2='▐ ^ ▌>'
+  if   [ "$score" -le 20 ]; then name=fresh;  l1=' ▗███▖';   l2='▐ O ▌>'
+  elif [ "$score" -le 45 ]; then name=chirpy; l1=' ▗███▖ ♪'; l2='▐ ^ ▌>'
   elif [ "$score" -le 70 ]; then name=tired;  l1=' ▗███▖';  l2='▐ - ▌>'
   elif [ "$score" -le 90 ]; then name=worn;   l1=' ▗▓▓▓▖';  l2='▐ ~ ▌>'
   else                           name=dead;   l1=' ▗░░░▖';  l2='░ x ▌v'
