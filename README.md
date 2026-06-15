@@ -36,7 +36,13 @@ vhs demo.tape
 
 ## install
 
-one line:
+**Homebrew** (cleanest):
+
+```sh
+brew install thousandflowers/tap/canary
+```
+
+or one line:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | sh
