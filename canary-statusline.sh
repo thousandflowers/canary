@@ -89,6 +89,9 @@ HIST="${CANARY_HISTORY_FILE:-$HOME/.canary/history}"
 today_d=$(( $(date +%s) / 86400 ))
 carry=0
 prev_today=0
+prior_sum=0       # sum of prior-day peaks, for your personal "normal"
+prior_n=0
+dead_days=""      # day numbers whose peak hit the dead band, for streak detection
 if [ -f "$HIST" ] && [ ! -L "$HIST" ]; then
   while read -r d s; do
     case "$d" in ''|\#*) continue ;; esac
@@ -101,11 +104,21 @@ if [ -f "$HIST" ] && [ ! -L "$HIST" ]; then
       age=$(( today_d - d )); w=$s; i=0
       while [ "$i" -lt "$age" ] && [ "$w" -gt 0 ]; do w=$(( w / 2 )); i=$(( i + 1 )); done
       carry=$(( carry + w ))
+      prior_sum=$(( prior_sum + s )); prior_n=$(( prior_n + 1 ))
+      [ "$s" -ge 90 ] && dead_days="$dead_days $d"
     fi
   done < "$HIST"
 fi
 dmax=${CANARY_DEBT_MAX:-30}
 [ "$carry" -gt "$dmax" ] && carry=$dmax
+
+# anti-habituation: your recent "normal" peak + how many days running you've
+# been in the dead band (counting back from yesterday)
+personal=0; [ "$prior_n" -gt 0 ] && personal=$(( prior_sum / prior_n ))
+streak=0; check=$(( today_d - 1 ))
+while case " $dead_days " in *" $check "*) true ;; *) false ;; esac; do
+  streak=$(( streak + 1 )); check=$(( check - 1 ))
+done
 
 # record today's peak (store RAW, pre-carry, so debt never compounds). Only
 # rewrite when the peak actually grows — keeps refresh-time writes rare.
@@ -137,8 +150,20 @@ if   [ "$score" -le 20 ]; then state=fresh;  top='▗███▖';  eye='O'; be
 elif [ "$score" -le 45 ]; then state=chirpy; top='▗███▖♪'; eye='^'; beak='>'
 elif [ "$score" -le 70 ]; then state=tired;  top='▗███▖';  eye='-'; beak='>'
 elif [ "$score" -le 90 ]; then state=worn;   top='▗▓▓▓▖';  eye='~'; beak='>'
-else                           state=dead;   top='▗░░░▖';  eye='x'; beak='v'
+else
+  # the dead FACE shows only on a day genuinely worse than YOUR recent norm —
+  # a perma-grind dead every night is wallpaper, not a nudge. Set
+  # CANARY_DEAD_ABSOLUTE=1 for the old fixed >90 face.
+  if [ -z "${CANARY_DEAD_ABSOLUTE:-}" ] && [ "$raw" -le "$personal" ]; then
+    state=worn; top='▗▓▓▓▖'; eye='~'; beak='>'
+  else
+    state=dead; top='▗░░░▖'; eye='x'; beak='v'
+  fi
 fi
+
+# persistent-grind warning, decoupled from the face: days running (incl. today)
+# in the dead band. A line whose number changes can't fade into wallpaper.
+nights=0; [ "$score" -gt 90 ] && nights=$(( streak + 1 ))
 
 # Claude Code re-indents continuation lines by 2 spaces, so the two bird rows
 # sit on their own lines (aligned) while the stats ride the first line.
@@ -147,4 +172,10 @@ if [ -n "${CANARY_SHOW_SCORE:-}" ]; then
     "$state" "$min" "$turns" "$errors" "$carry" "$score" "$top" "$eye" "$beak"
 else
   printf ' %s · %dm · %dt\n%s\n▐ %s ▌%s' "$state" "$min" "$turns" "$top" "$eye" "$beak"
+fi
+
+# escalate a dead streak — a changing message can't fade into wallpaper the way
+# the same dead bird every night would
+if [ "${nights:-0}" -ge 2 ]; then
+  printf '\n  ✕ %d nights past your limit — close the laptop.' "$nights"
 fi

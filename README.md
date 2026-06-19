@@ -83,6 +83,7 @@ CANARY_REP_WEIGHT=2     # score per extra repeat in the longest same-command run
 # multi-day fatigue: a hard week carries over, rest pays it down
 CANARY_DEBT_MAX=30      # cap on carried-over fatigue from recent days (default 30; 0 = off)
 CANARY_HISTORY_FILE=…   # where daily peaks live (default ~/.canary/history)
+CANARY_DEAD_ABSOLUTE=1  # always show the fixed >90 dead face (default off: dead only on a day worse than your norm)
 
 # circadian penalty — defaults assume a daytime schedule.
 # night owl? tune or switch it off:
@@ -110,6 +111,19 @@ you're looping. (`uniq` counts consecutive only, so interleaved tool noise is ig
 *multi-day debt* = a hard week carries over. canary keeps each day's peak in
 `~/.canary/history` and adds a decaying share of recent days — halved per day,
 so a few days of rest pay it down. you start Monday tired after a brutal week.
+
+## not getting used to it
+
+A dead bird every night is wallpaper, not a nudge — its value is in staying
+rare. So two anti-habituation tricks:
+
+- **relative death** — the dead *face* shows only on a day genuinely worse than
+  your own recent norm (your average daily peak). Grind hard every day and the
+  bird settles at *worn*, not a meaningless nightly *dead*. (`CANARY_DEAD_ABSOLUTE=1`
+  restores the fixed >90 face.)
+- **escalating streak** — if you keep hitting the wall, a line counts the run:
+  *"✕ 4 nights past your limit — close the laptop."* A number that changes can't
+  blur into the background the way a static bird would.
 
 **honest caveat:** still a proxy, not a doctor — but it now tells a smooth run
 from a slog, a frantic loop from steady flow, and a rested you from a fried one.
