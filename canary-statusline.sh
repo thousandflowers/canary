@@ -1,51 +1,133 @@
 #!/usr/bin/env bash
-# canary-statusline.sh — renders the fatigue bird for Claude Code's statusLine.
+# canary-statusline.sh — a pixel-art bird for Claude Code's statusLine that
+# wilts the longer/harder your sessions run, across days. For fun, not science.
 #
-# Reads ~/.canary/canary-state (written by canary.sh's preexec hook) and prints
-# two lines, designed to sit next to caveman's [CAVEMAN] badge (which emits no
-# trailing newline, so our line 1 continues on the same row):
+# Claude Code pipes a status JSON on stdin every refresh; this script reads it,
+# scores fatigue, and prints the bird. Two lines:
 #
-#   [CAVEMAN] ▗███▖ fresh · 12m · 8p
-#             ▐ O ▌>
+#   ▗███▖ tired · 58m · 41t
+#   ▐ - ▌>
 #
-# No ANSI color. The scoring mirrors canary.sh — this runs as a separate process
-# (Claude Code invokes it), so it can't share the interactive shell's variables.
+# Zero deps: pure shell + grep/awk. No jq, no color, no API calls.
+#
+# Fatigue (capped 0-100), optional night penalty, plus a multi-day debt:
+#   score = minutes/3 + turns/2 + errors×3 + cadence + reps×2   (today's raw)
+#         + carried-over debt from recent days (rest pays it down)
+#   minutes  = session wall-clock (cost.total_duration_ms)
+#   turns    = your messages in the transcript
+#   errors   = failed tool calls (is_error:true) — frustration
+#   cadence  = how frantic the pace is (turns per hour over a baseline)
+#   reps     = longest run of the same command back-to-back — stuck in a loop
+# Still a proxy, not a doctor — but it now tells a smooth run from a slog.
+#
+# Knobs (export into Claude Code's environment):
+#   CANARY_DISABLED=1       hide the bird
+#   CANARY_MIN_SCORE=N      only draw at/above this score (0 = always; 46 = tired+)
+#   CANARY_SHOW_SCORE=1     append the numeric breakdown
+#   CANARY_ERR_WEIGHT=3     score per errored tool call (0 = ignore)
+#   CANARY_CADENCE_BASE=30  turns/hour above which the pace counts as frantic
+#   CANARY_REP_WEIGHT=2     score per extra repeat in the longest same-command run
+#   CANARY_DEBT_MAX=30      cap on carried-over multi-day fatigue
+#   CANARY_HISTORY_FILE     where daily peaks live (default ~/.canary/history)
+#   CANARY_NIGHT_START=22 CANARY_NIGHT_END=7 CANARY_NIGHT_MULT=130  (100 = off)
 
-STATE="${CANARY_STATE_FILE:-$HOME/.canary/canary-state}"
+[ -n "${CANARY_DISABLED:-}" ] && exit 0
 
-# refuse a symlinked state file (a local attacker could repoint it); no-op if absent
-[ -L "$STATE" ] && exit 0
-[ -f "$STATE" ] || exit 0
+json=$(cat)   # the whole status blob Claude Code sends on stdin
 
-# parse only the keys we expect; keep digits only (blocks terminal-escape injection)
-ts_start=0; prompt_count=0; avg_len=0; active=-1
-while IFS='=' read -r k v; do
-  v=$(printf '%s' "$v" | tr -cd '0-9')
-  case "$k" in
-    timestamp_start) ts_start=${v:-0} ;;
-    prompt_count)    prompt_count=${v:-0} ;;
-    avg_prompt_len)  avg_len=${v:-0} ;;
-    active_seconds)  active=${v:--1} ;;
-  esac
-done < "$STATE"
+# --- session minutes from total_duration_ms (digits only = injection-safe) ---
+dur_ms=$(printf '%s' "$json" | grep -oE '"total_duration_ms":[0-9]+' | head -1 | grep -oE '[0-9]+$')
+[ -n "$dur_ms" ] || dur_ms=0
+min=$(( dur_ms / 60000 ))
 
-# minutes: prefer idle-aware active_seconds; fall back to wall clock from start
-if [ "$active" -ge 0 ]; then
-  min=$(( active / 60 ))
-else
-  now=$(date +%s)
-  min=$(( (now - ts_start) / 60 ))
-  [ "$min" -lt 0 ] && min=0
+# --- transcript-derived signals: turns, errors, repetition ------------------
+tpath=$(printf '%s' "$json" | grep -oE '"transcript_path":"[^"]*"' | head -1 | sed 's/.*:"//; s/"$//')
+turns=0
+errors=0
+reps=0
+if [ -n "$tpath" ] && [ -f "$tpath" ] && [ ! -L "$tpath" ]; then
+  # human turns = user-type lines minus the tool_result lines Claude Code also
+  # records as "type":"user" (ponytail: line-grep, not a real JSONL parse).
+  turns=$(grep '"type":"user"' "$tpath" 2>/dev/null | grep -vc 'tool_result')
+  [ -n "$turns" ] || turns=0
+  # frustration: failed tool calls (a non-zero exit shows up as is_error:true)
+  errors=$(grep -c '"is_error":true' "$tpath" 2>/dev/null)
+  [ -n "$errors" ] || errors=0
+  # stuck-in-a-loop: longest run of the SAME command back-to-back. Only count
+  # real tool_use lines — Claude Code logs its hook machinery's commands on
+  # hook_success/attachment lines, which would otherwise swamp the signal. This
+  # filters by message *type*, not a hardcoded list of tool names.
+  maxrun=$(grep '"type":"tool_use"' "$tpath" 2>/dev/null | grep -oE '"command":"[^"]*"' | uniq -c \
+           | awk 'BEGIN{m=0}{if($1>m)m=$1}END{print m}')
+  [ -n "$maxrun" ] || maxrun=0
+  [ "$maxrun" -gt 1 ] && reps=$(( maxrun - 1 ))
 fi
 
-score=$(( min / 3 + prompt_count / 2 + avg_len / 10 ))
+# --- cadence: frantic pace = many turns crammed into little time ------------
+cadence=0
+if [ "$min" -gt 0 ]; then
+  rate=$(( turns * 60 / min ))                 # turns per hour
+  base=${CANARY_CADENCE_BASE:-30}
+  [ "$rate" -gt "$base" ] && cadence=$(( (rate - base) / 3 ))
+fi
 
-# circadian penalty (defaults; honors CANARY_NIGHT_* if exported into CC's env)
+# --- today's raw fatigue ----------------------------------------------------
+raw=$(( min / 3 + turns / 2 + errors * ${CANARY_ERR_WEIGHT:-3} + cadence + reps * ${CANARY_REP_WEIGHT:-2} ))
+
+# --- circadian penalty (defaults assume a daytime schedule) -----------------
 ns=${CANARY_NIGHT_START:-22}; ne=${CANARY_NIGHT_END:-7}; nm=${CANARY_NIGHT_MULT:-130}
 hour=$(( 10#$(date +%H) ))
 if [ "$hour" -ge "$ns" ] || [ "$hour" -lt "$ne" ]; then
-  score=$(( score * nm / 100 ))
+  raw=$(( raw * nm / 100 ))
 fi
+[ "$raw" -gt 100 ] && raw=100
+
+# --- multi-day debt: a hard week carries over, rest pays it down ------------
+# history lines: "<whole-days-since-epoch> <that-day's-peak>". Whole-day integers
+# dodge all date parsing — age is just subtraction.
+HIST="${CANARY_HISTORY_FILE:-$HOME/.canary/history}"
+today_d=$(( $(date +%s) / 86400 ))
+carry=0
+prev_today=0
+if [ -f "$HIST" ] && [ ! -L "$HIST" ]; then
+  while read -r d s; do
+    case "$d" in ''|\#*) continue ;; esac
+    d=$(printf '%s' "$d" | tr -cd '0-9'); s=$(printf '%s' "$s" | tr -cd '0-9')
+    [ -n "$d" ] && [ -n "$s" ] || continue
+    if [ "$d" = "$today_d" ]; then
+      prev_today=$s
+    elif [ "$d" -lt "$today_d" ]; then
+      # halve the old peak once per day of age -> ~gone after 4-5 days = recovery
+      age=$(( today_d - d )); w=$s; i=0
+      while [ "$i" -lt "$age" ] && [ "$w" -gt 0 ]; do w=$(( w / 2 )); i=$(( i + 1 )); done
+      carry=$(( carry + w ))
+    fi
+  done < "$HIST"
+fi
+dmax=${CANARY_DEBT_MAX:-30}
+[ "$carry" -gt "$dmax" ] && carry=$dmax
+
+# record today's peak (store RAW, pre-carry, so debt never compounds). Only
+# rewrite when the peak actually grows — keeps refresh-time writes rare.
+peak=$raw; [ "$prev_today" -gt "$peak" ] && peak=$prev_today
+if [ "$peak" -gt "$prev_today" ] && mkdir -p "${HIST%/*}" 2>/dev/null && [ ! -L "$HIST" ]; then
+  # ponytail: last-writer-wins if two CC windows refresh at once — fine for a toy.
+  tmp=$(mktemp 2>/dev/null || echo "$HIST.tmp")
+  {
+    printf '%s %s\n' "$today_d" "$peak"
+    if [ -f "$HIST" ]; then
+      while read -r d s; do
+        case "$d" in ''|\#*) continue ;; esac
+        d=$(printf '%s' "$d" | tr -cd '0-9'); s=$(printf '%s' "$s" | tr -cd '0-9')
+        [ -n "$d" ] && [ -n "$s" ] || continue
+        [ "$d" -lt "$today_d" ] && [ "$(( today_d - d ))" -le 10 ] && printf '%s %s\n' "$d" "$s"
+      done < "$HIST"
+    fi
+  } > "$tmp" 2>/dev/null
+  mv "$tmp" "$HIST" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+fi
+
+score=$(( raw + carry ))
 [ "$score" -gt 100 ] && score=100
 
 # optional quiet threshold — show nothing below it
@@ -58,10 +140,11 @@ elif [ "$score" -le 90 ]; then state=worn;   top='▗▓▓▓▖';  eye='~'; be
 else                           state=dead;   top='▗░░░▖';  eye='x'; beak='v'
 fi
 
-# Claude Code strips leading whitespace from each status line and re-indents
-# continuation lines by its own 2 spaces — so leading-space alignment is futile,
-# and a bird half glued to the variable-width [CAVEMAN] line can never line up.
-# Fix: stats ride along the badge line; the two bird rows live entirely on their
-# own continuation lines, where Claude Code indents them equally → they align.
-printf ' %s · %dm · %dp\n%s\n▐ %s ▌%s' \
-  "$state" "$min" "$prompt_count" "$top" "$eye" "$beak"
+# Claude Code re-indents continuation lines by 2 spaces, so the two bird rows
+# sit on their own lines (aligned) while the stats ride the first line.
+if [ -n "${CANARY_SHOW_SCORE:-}" ]; then
+  printf ' %s · %dm · %dt · %de · d%d · %d\n%s\n▐ %s ▌%s' \
+    "$state" "$min" "$turns" "$errors" "$carry" "$score" "$top" "$eye" "$beak"
+else
+  printf ' %s · %dm · %dt\n%s\n▐ %s ▌%s' "$state" "$min" "$turns" "$top" "$eye" "$beak"
+fi
