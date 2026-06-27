@@ -79,9 +79,9 @@ CANARY_NIGHT_MULT=130   # penalty percent: 100 = off, 130 = ×1.3 (default)
 
 ## the "fatigue" number
 ```
-score = minutes/3 + commands/2 + avg_cmd_len/10        (capped at 100)
-      = (min/120·40) + (count/80·40) + (avglen/200·20)
-night   × CANARY_NIGHT_MULT/100
+shell:        minutes/3 + commands/2 + avg_cmd_len/10
+Claude Code:  minutes/3 + turns/2 + errors·3 + cadence + reps·2
+both          × CANARY_NIGHT_MULT/100 (night)  + multi-day debt   (capped at 100)
 0–20 fresh   21–45 chirpy   46–70 tired   71–90 worn   91–100 dead
 ```
 *minutes* = **active** time only: gaps longer than `CANARY_IDLE_THRESHOLD`
@@ -93,19 +93,46 @@ a deep flow session and a frustrating debug both look identical to it. treat
 the bird as a playful timer, not a doctor.
 
 ## Claude Code statusline
-canary can perch next to caveman's `[CAVEMAN]` badge in Claude Code's status line:
+canary also perches next to caveman's `[CAVEMAN]` badge in Claude Code's status line:
 ```
-[CAVEMAN] ▗███▖ tired · 58m · 41p
+[CAVEMAN] ▗███▖ tired · 58m · 41t
           ▐ - ▌>
 ```
+Here the bird watches your **coding session**, not your shell. Claude Code pipes its
+session JSON to `canary-statusline.sh` on every refresh; the script reads
+`cost.total_duration_ms` for minutes and walks the session transcript for richer
+signals than the shell bird can see:
+
+- **turns** — your actual prompts (tool-call chatter filtered out), the `41t` above
+- **errors** — failed tool calls, a decent proxy for frustration
+- **cadence** — turns-per-hour above normal = a frantic, stuck pace
+- **reps** — the same command fired back-to-back = spinning your wheels
+
+It's the same five birds and bands; just fed better data. Outside Claude Code (or
+before a transcript exists) it falls back to `~/.canary/canary-state`, so the
+shell-prompt bird and the statusline tell the same story.
+
+```sh
+CANARY_ERR_WEIGHT=3      # points per failed tool call (default 3)
+CANARY_CADENCE_BASE=30   # turns/hour treated as "normal" (above it adds points)
+CANARY_REP_WEIGHT=2      # points per extra back-to-back repeat of a command
+CANARY_DEBT_MAX=30       # cap on yesterday's fatigue carried into today
+CANARY_DEAD_ABSOLUTE=1   # always show the dead bird at >90 (default: only when
+                         # today is worse than your own recent average — so a
+                         # nightly grind doesn't make the dead bird wallpaper)
+```
+
+**multi-day debt:** a tiny `~/.canary/history` (one `epoch-day peak` line per day,
+pruned to 10) means the bird doesn't reset to fresh just because you opened a new
+session — yesterday's peak carries over, halving each day, and fades after ~4–5 days
+of rest. Two+ consecutive days past the limit add a `✕ N nights past your limit` line.
+
 `install.sh` wires this automatically (needs `jq`): it drops `canary-statusline.sh`
 into `~/.canary/` and merges a `statusLine` command into
 `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`). If a status line already
 exists (e.g. caveman's), canary is **appended** to it, not replacing it — Claude
 Code allows only one status line command, and caveman emits no trailing newline so
 the bird lands right beside the badge. A backup is saved to `settings.json.canary.bak`.
-The status line reads `~/.canary/canary-state`, refreshed by canary's shell hook
-every command, so the prompt bird and the status line always agree.
 
 `sh uninstall.sh` removes only canary's segment, leaving the rest intact.
 
