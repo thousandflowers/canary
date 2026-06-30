@@ -6,7 +6,7 @@
 #   • Claude Code mode  — Claude Code pipes its session JSON on stdin every
 #     refresh. We read `cost.total_duration_ms` for session minutes and walk the
 #     `transcript_path` JSONL for richer fatigue signals: human turns, failed
-#     tool calls, frantic cadence, and runs of the same repeated command. This
+#     tool calls, and runs of the same repeated command. This
 #     is what you see beside caveman's [CAVEMAN] badge inside Claude Code.
 #
 #   • Shell mode (fallback) — when nothing is piped in (e.g. run by hand, or no
@@ -24,7 +24,6 @@
 #   CANARY_MIN_SCORE=46      draw only at this score or higher (0 = always)
 #   CANARY_SHOW_SCORE=1      append the raw numbers to the stat line
 #   CANARY_ERR_WEIGHT=3      points per failed tool call (frustration)
-#   CANARY_CADENCE_BASE=30   turns/hour considered "normal"; above it adds points
 #   CANARY_REP_WEIGHT=2      points per extra repeat of the same command (stuck)
 #   CANARY_DEBT_MAX=30       cap on yesterday's-fatigue carried into today
 #   CANARY_HISTORY_FILE      where daily peaks live (default ~/.canary/history)
@@ -37,7 +36,6 @@
 STATE="${CANARY_STATE_FILE:-$HOME/.canary/canary-state}"
 HIST="${CANARY_HISTORY_FILE:-$HOME/.canary/history}"
 ERR_WEIGHT=${CANARY_ERR_WEIGHT:-3}
-CADENCE_BASE=${CANARY_CADENCE_BASE:-30}
 REP_WEIGHT=${CANARY_REP_WEIGHT:-2}
 DEBT_MAX=${CANARY_DEBT_MAX:-30}
 
@@ -49,7 +47,7 @@ json_int() { printf '%s' "$1" | grep -o "\"$2\":[0-9]*" | head -1 | grep -o '[0-
 input=""
 [ -t 0 ] || input=$(cat 2>/dev/null)   # CC pipes JSON; a TTY means nothing piped
 
-min=0; turns=0; errors=0; reps=0; cadence=0
+min=0; turns=0; errors=0; reps=0
 statname="t"   # label for the second stat (t=turns in CC mode, p=prompts in shell mode)
 
 if printf '%s' "$input" | grep -q '"transcript_path"'; then
@@ -60,27 +58,33 @@ if printf '%s' "$input" | grep -q '"transcript_path"'; then
   line=$(printf '%s' "$input" | grep -o '"transcript_path":"[^"]*"' | head -1)
   tpath=${line#*:\"}; tpath=${tpath%\"}
   if [ -n "$tpath" ] && [ ! -L "$tpath" ] && [ -f "$tpath" ] && [ -r "$tpath" ]; then
-    # human turns = user lines minus tool_result lines (CC wraps each tool result
-    # as a "type":"user" line, so the raw count runs ~6x high).
-    u=$(grep -c '"type":"user"' "$tpath" 2>/dev/null); u=${u:-0}
-    tr=$(grep -c 'tool_result' "$tpath" 2>/dev/null); tr=${tr:-0}
-    turns=$(( u - tr )); [ "$turns" -lt 0 ] && turns=0
-    errors=$(grep -c '"is_error":true' "$tpath" 2>/dev/null); errors=${errors:-0}
-    # longest run of the SAME command back-to-back (uniq = consecutive, so it
-    # ignores interleaved hook noise). reps = that run length minus 1.
-    reps=$(grep -o '"command":"[^"]*"' "$tpath" 2>/dev/null | uniq -c \
+    # ponytail: scan only the last ~2MB. On long sessions the transcript grows to
+    # tens of MB; grepping the whole file ~4x per refresh blew Claude Code's
+    # statusline timeout, so NOTHING rendered — the bird went invisible in long
+    # sessions (the actual bug). `tail -c` caps the work at ~0.3s regardless of
+    # file size. Older lines can't change the band anyway (a session that long is
+    # already maxed on `min`), so turns/errors/reps reflect recent activity —
+    # which is what fatigue should weight. (tail -n is wrong: N huge JSONL lines
+    # are still tens of MB.)
+    buf=$(tail -c 2000000 "$tpath" 2>/dev/null)
+    # human turns = "type":"user" lines that AREN'T tool results (CC wraps each
+    # tool result as its own "type":"user" line). Excluding tool_result lines
+    # directly is robust; the old "users - grep tool_result" underflowed to 0.
+    turns=$(grep '"type":"user"' <<<"$buf" | grep -vc 'tool_result'); turns=${turns:-0}
+    errors=$(grep -c '"is_error":true' <<<"$buf"); errors=${errors:-0}
+    # longest run of the SAME command back-to-back (uniq = consecutive). reps =
+    # run length minus 1, capped at 5 so a polling/retry loop can't alone kill it.
+    reps=$(grep -o '"command":"[^"]*"' <<<"$buf" | uniq -c \
            | awk 'BEGIN{m=0}{if($1>m)m=$1}END{print m+0}')
-    reps=$(( reps > 1 ? reps - 1 : 0 ))
+    reps=$(( reps > 1 ? reps - 1 : 0 )); [ "$reps" -gt 5 ] && reps=5
   fi
 
-  # cadence: turns/hour above CADENCE_BASE = frantic pace (reuses turns+min, no
-  # timestamp parsing). ponytail: proxy of a proxy, but free given what we have.
-  if [ "$min" -gt 0 ]; then
-    rate=$(( turns * 60 / min ))
-    cadence=$(( rate > CADENCE_BASE ? (rate - CADENCE_BASE) / 3 : 0 ))
-  fi
-
-  raw=$(( min / 3 + turns / 2 + errors * ERR_WEIGHT + cadence + reps * REP_WEIGHT ))
+  # ponytail: no cadence term. turns/hour divided by a tiny early-session `min`
+  # exploded into noise, and "slower pace = less tired" is backwards for a
+  # fatigue meter — it made the score non-monotonic in time (bird got HEALTHIER
+  # as minutes passed). errors + reps already capture frantic/stuck. Fatigue now
+  # only ever climbs within a session.
+  raw=$(( min / 3 + turns / 2 + errors * ERR_WEIGHT + reps * REP_WEIGHT ))
 else
   # ---- shell-state fallback ----
   statname="p"

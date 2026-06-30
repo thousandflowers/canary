@@ -80,7 +80,7 @@ CANARY_NIGHT_MULT=130   # penalty percent: 100 = off, 130 = ×1.3 (default)
 ## the "fatigue" number
 ```
 shell:        minutes/3 + commands/2 + avg_cmd_len/10
-Claude Code:  minutes/3 + turns/2 + errors·3 + cadence + reps·2
+Claude Code:  minutes/3 + turns/2 + errors·3 + reps·2
 both          × CANARY_NIGHT_MULT/100 (night)  + multi-day debt   (capped at 100)
 0–20 fresh   21–45 chirpy   46–70 tired   71–90 worn   91–100 dead
 ```
@@ -105,8 +105,7 @@ signals than the shell bird can see:
 
 - **turns** — your actual prompts (tool-call chatter filtered out), the `41t` above
 - **errors** — failed tool calls, a decent proxy for frustration
-- **cadence** — turns-per-hour above normal = a frantic, stuck pace
-- **reps** — the same command fired back-to-back = spinning your wheels
+- **reps** — the same command fired back-to-back = spinning your wheels (capped, so a polling loop won't bury the bird)
 
 It's the same five birds and bands; just fed better data. Outside Claude Code (or
 before a transcript exists) it falls back to `~/.canary/canary-state`, so the
@@ -114,8 +113,7 @@ shell-prompt bird and the statusline tell the same story.
 
 ```sh
 CANARY_ERR_WEIGHT=3      # points per failed tool call (default 3)
-CANARY_CADENCE_BASE=30   # turns/hour treated as "normal" (above it adds points)
-CANARY_REP_WEIGHT=2      # points per extra back-to-back repeat of a command
+CANARY_REP_WEIGHT=2      # points per extra back-to-back repeat of a command (capped at 5)
 CANARY_DEBT_MAX=30       # cap on yesterday's fatigue carried into today
 CANARY_DEAD_ABSOLUTE=1   # always show the dead bird at >90 (default: only when
                          # today is worse than your own recent average — so a
