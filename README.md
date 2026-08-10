@@ -1,4 +1,7 @@
 # canary
+
+> ⚠️ Alpha — in active development. Not ready for daily use yet.
+
 a tiny pixel-art bird that lives in your shell prompt and slowly wilts the
 longer you grind. **for fun** — a nudge to step away, not a science.
 no color. no internet. no dependency. just UTF-8 block art + your shell.
