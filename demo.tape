@@ -1,4 +1,4 @@
-# canary demo tape — render with:  vhs demo.tape
+# canary demo tape - render with:  vhs demo.tape
 # produces assets/demo.gif (the bird wilting as a "session" wears on)
 # https://github.com/charmbracelet/vhs
 

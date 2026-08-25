@@ -1,9 +1,9 @@
 # canary
 
-> ⚠️ Alpha — in active development. Not ready for daily use yet.
+> ⚠️ Alpha - in active development. Not ready for daily use yet.
 
 a tiny pixel-art bird that lives in your shell prompt and slowly wilts the
-longer you grind. **for fun** — a nudge to step away, not a science.
+longer you grind. **for fun** - a nudge to step away, not a science.
 no color. no internet. no dependency. just UTF-8 block art + your shell.
 
 ## bird
@@ -33,12 +33,12 @@ vhs demo.tape
 my girlfriend kept telling me i spend too much time at the computer. she
 was right, but i needed to see it for myself.
 
-miners used to bring canaries underground — a living warning system, silent
+miners used to bring canaries underground - a living warning system, silent
 until something was wrong. i liked that image: a creature that absorbs the
 environment and shows you its state, without asking you to think about it.
 
-the other reference is [Birdie by Rosendahl](https://us.rosendahl.com/pages/birdie)
-— a small brass bird that tilts when CO₂ in the room gets too high. no screen,
+the other reference is [Birdie by Rosendahl](https://us.rosendahl.com/pages/birdie) -
+a small brass bird that tilts when CO₂ in the room gets too high. no screen,
 no alert, just a physical object changing state. that's what i wanted in the
 terminal: something ambient, not another notification.
 
@@ -54,7 +54,7 @@ or one line:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | sh
 ```
-**prefer to read before you run?** (good instinct — `curl | sh` runs code
+**prefer to read before you run?** (good instinct - `curl | sh` runs code
 sight-unseen.) clone, inspect, then install locally:
 ```sh
 git clone https://github.com/thousandflowers/canary
@@ -89,7 +89,7 @@ both          × CANARY_NIGHT_MULT/100 (night)  + multi-day debt   (capped at 10
 ```
 *minutes* = **active** time only: gaps longer than `CANARY_IDLE_THRESHOLD`
 (default 5 min) are treated as breaks and don't count. leave the terminal
-open all afternoon — the bird only ages while you actually work.
+open all afternoon - the bird only ages while you actually work.
 
 **honest caveat:** this is a crude *activity* proxy, not real cognitive load.
 a deep flow session and a frustrating debug both look identical to it. treat
@@ -106,9 +106,9 @@ session JSON to `canary-statusline.sh` on every refresh; the script reads
 `cost.total_duration_ms` for minutes and walks the session transcript for richer
 signals than the shell bird can see:
 
-- **turns** — your actual prompts (tool-call chatter filtered out), the `41t` above
-- **errors** — failed tool calls, a decent proxy for frustration
-- **reps** — the same command fired back-to-back = spinning your wheels (capped, so a polling loop won't bury the bird)
+- **turns** - your actual prompts (tool-call chatter filtered out), the `41t` above
+- **errors** - failed tool calls, a decent proxy for frustration
+- **reps** - the same command fired back-to-back = spinning your wheels (capped, so a polling loop won't bury the bird)
 
 It's the same five birds and bands; just fed better data. Outside Claude Code (or
 before a transcript exists) it falls back to `~/.canary/canary-state`, so the
@@ -125,13 +125,13 @@ CANARY_DEAD_ABSOLUTE=1   # always show the dead bird at >90 (default: only when
 
 **multi-day debt:** a tiny `~/.canary/history` (one `epoch-day peak` line per day,
 pruned to 10) means the bird doesn't reset to fresh just because you opened a new
-session — yesterday's peak carries over, halving each day, and fades after ~4–5 days
+session - yesterday's peak carries over, halving each day, and fades after ~4–5 days
 of rest. Two+ consecutive days past the limit add a `✕ N nights past your limit` line.
 
 `install.sh` wires this automatically (needs `jq`): it drops `canary-statusline.sh`
 into `~/.canary/` and merges a `statusLine` command into
 `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`). If a status line already
-exists (e.g. caveman's), canary is **appended** to it, not replacing it — Claude
+exists (e.g. caveman's), canary is **appended** to it, not replacing it - Claude
 Code allows only one status line command, and caveman emits no trailing newline so
 the bird lands right beside the badge. A backup is saved to `settings.json.canary.bak`.
 
