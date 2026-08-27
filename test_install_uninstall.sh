@@ -59,10 +59,17 @@ assert_has "uninstall-rc-keeps" "$(cat "$H/.bashrc")" 'export PREEXISTING=1'
 # The fix wires .bashrc always and chains the login rc to it, so all four
 # starting states have to work in both shell modes.
 bash_loads() { # <home> <login|nonlogin> -> "yes"/"no"
+  # Asserts the BIRD RENDERS, not merely that `canary` is defined. A weaker
+  # "did it say command not found" check passes even when the prompt hook was
+  # never wired, which is most of what could go wrong here.
   if [ "$2" = login ]; then set -- "$1" -l -i; else set -- "$1" -i; fi
   h=$1; shift
   out=$(printf 'canary score\nexit\n' | env HOME="$h" CANARY_NIGHT_MULT=100 /bin/bash "$@" 2>&1)
-  case "$out" in *"command not found"*) echo no ;; *) echo yes ;; esac
+  case "$out" in
+    *"command not found"*) echo no ;;
+    *"▐ O ▌>"*)            echo yes ;;   # the fresh bird, drawn by the prompt hook
+    *)                     echo no ;;
+  esac
 }
 
 for start in none bashrc-only profile-only both; do
