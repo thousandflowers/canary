@@ -16,7 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install shellcheck
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends shellcheck
+        # Pinned, not apt. Different shellcheck releases disagree about which
+        # findings are worth reporting — 0.11 dropped an SC2015 that 0.9 flags —
+        # so an unpinned linter turns "CI is green" into a function of whatever
+        # the runner image shipped that week. Bump this deliberately.
+        env:
+          SC_VERSION: v0.10.0
+        run: |
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SC_VERSION}/shellcheck-${SC_VERSION}.linux.x86_64.tar.xz" \
+            | sudo tar -xJ --strip-components=1 -C /usr/local/bin "shellcheck-${SC_VERSION}/shellcheck"
+          shellcheck --version
       - name: lint every shell script
         # -x follows sourced files. canary.sh carries targeted `shellcheck
         # disable=` comments for the bash-only branch it guards with $BASH_VERSION.

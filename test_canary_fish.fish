@@ -114,8 +114,10 @@ assert_eq "avg-empty-not-summed" "$out" "4/1"
 set out (run "set -g CANARY_IDLE_THRESHOLD 1; set -g CANARY_LAST_ACTIVE (math (date +%s) - 3600); _canary_record ls; echo \$CANARY_ACTIVE_SECONDS")
 assert_eq "idle-gap-ignored" "$out" "0"
 
-set out (run "set -g CANARY_IDLE_THRESHOLD 99999; set -g CANARY_LAST_ACTIVE (math (date +%s) - 600); _canary_record ls; echo \$CANARY_ACTIVE_SECONDS")
-assert_eq "active-gap-accrued" "$out" "600"
+# tolerance, not equality: the fixture and _canary_record each call date(1), so
+# a second boundary between them makes this 601 — a spurious failure otherwise
+set out (run "set -g CANARY_IDLE_THRESHOLD 99999; set -g CANARY_LAST_ACTIVE (math (date +%s) - 600); _canary_record ls; test \$CANARY_ACTIVE_SECONDS -ge 600 -a \$CANARY_ACTIVE_SECONDS -le 602; and echo in-range; or echo \$CANARY_ACTIVE_SECONDS")
+assert_eq "active-gap-accrued" "$out" "in-range"
 
 # --- 5. bare Enter is not a prompt -------------------------------------------
 set out (run "_canary_record ''; echo \$CANARY_PROMPT_COUNT")

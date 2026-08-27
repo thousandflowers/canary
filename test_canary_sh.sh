@@ -119,9 +119,12 @@ assert_eq "avg-empty-not-summed" "$out" "4/1"
 out=$(run CANARY_IDLE_THRESHOLD=1 -- 'CANARY_LAST_ACTIVE=$(( $(date +%s) - 3600 )); _canary_record "ls"; echo $CANARY_ACTIVE_SECONDS')
 assert_eq "idle-gap-ignored" "$out" "0"
 
-# a gap inside the threshold is work: it accrues
-out=$(run CANARY_IDLE_THRESHOLD=99999 -- 'CANARY_LAST_ACTIVE=$(( $(date +%s) - 600 )); _canary_record "ls"; echo $CANARY_ACTIVE_SECONDS')
-assert_eq "active-gap-accrued" "$out" "600"
+# a gap inside the threshold is work: it accrues.
+# Tolerance, not equality: the fixture calls date(1) and so does _canary_record,
+# and a second boundary between the two makes this 601. Asserting == 600 is a
+# test that fails roughly once every few hundred runs for no reason.
+out=$(run CANARY_IDLE_THRESHOLD=99999 -- 'CANARY_LAST_ACTIVE=$(( $(date +%s) - 600 )); _canary_record "ls"; v=$CANARY_ACTIVE_SECONDS; { [ "$v" -ge 600 ] && [ "$v" -le 602 ]; } && echo in-range || echo "$v"')
+assert_eq "active-gap-accrued" "$out" "in-range"
 
 # --- 5. empty command line (bare Enter) is not a prompt ----------------------
 out=$(run -- '_canary_record ""; echo $CANARY_PROMPT_COUNT')

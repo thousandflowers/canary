@@ -13,7 +13,10 @@ REPO_RAW="https://raw.githubusercontent.com/thousandflowers/canary/main"
 # where this script lives (empty when piped through curl)
 SCRIPT_DIR=""
 case "${0:-}" in
-  */*) SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd || true) ;;
+  # `|| SCRIPT_DIR=""` rather than `&& pwd || true`: the latter is SC2015 and
+  # reads like if-then-else when it isn't. Failing to resolve is fine — we just
+  # fall back to fetching over the network.
+  */*) SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd) || SCRIPT_DIR="" ;;
 esac
 
 # --- fetch a file: prefer local sibling, else curl from the repo -------------
@@ -123,8 +126,9 @@ main() {
   ensure_line "$rc" "$line"
 
   # Claude Code statusline (optional; needs jq + a Claude Code config dir)
-  fetch "canary-statusline.sh" "$CANARY_HOME/canary-statusline.sh" 2>/dev/null \
-    && chmod +x "$CANARY_HOME/canary-statusline.sh" 2>/dev/null || true
+  if fetch "canary-statusline.sh" "$CANARY_HOME/canary-statusline.sh" 2>/dev/null; then
+    chmod +x "$CANARY_HOME/canary-statusline.sh" 2>/dev/null || true
+  fi
   wire_statusline || true
 
   printf '\n ▗███▖\n▐ O ▌>   canary installed for %s\n\n' "$shell_name"
