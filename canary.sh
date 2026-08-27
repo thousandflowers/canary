@@ -41,19 +41,19 @@ _CANARY_LEN_WINDOW=20                 # rolling window for avg prompt length
 _canary_record() {
   # zsh does not word-split unquoted expansions; opt in, locally, for the splits below
   [ -n "${ZSH_VERSION:-}" ] && setopt localoptions shwordsplit 2>/dev/null
-  cmd=$1
+  _cy_cmd=$1
   # ignore empty lines (bare Enter)
-  [ -z "$cmd" ] && return 0
+  [ -z "$_cy_cmd" ] && return 0
 
   # accrue active time, ignoring idle gaps (coffee breaks don't tire the bird)
-  now=$(date +%s)
-  gap=$(( now - CANARY_LAST_ACTIVE ))
-  [ "$gap" -le "$CANARY_IDLE_THRESHOLD" ] && CANARY_ACTIVE_SECONDS=$(( CANARY_ACTIVE_SECONDS + gap ))
-  CANARY_LAST_ACTIVE=$now
+  _cy_now=$(date +%s)
+  _cy_gap=$(( _cy_now - CANARY_LAST_ACTIVE ))
+  [ "$_cy_gap" -le "$CANARY_IDLE_THRESHOLD" ] && CANARY_ACTIVE_SECONDS=$(( CANARY_ACTIVE_SECONDS + _cy_gap ))
+  CANARY_LAST_ACTIVE=$_cy_now
 
   CANARY_PROMPT_COUNT=$(( CANARY_PROMPT_COUNT + 1 ))
-  len=${#cmd}
-  CANARY_LENS="$CANARY_LENS $len"
+  _cy_len=${#_cy_cmd}
+  CANARY_LENS="$CANARY_LENS $_cy_len"
   # keep only the last _CANARY_LEN_WINDOW samples
   # shellcheck disable=SC2086
   set -- $CANARY_LENS
@@ -69,16 +69,16 @@ _canary_avg() {
   [ -n "${ZSH_VERSION:-}" ] && setopt localoptions shwordsplit 2>/dev/null
   # shellcheck disable=SC2086
   set -- $CANARY_LENS
-  n=$#
-  if [ "$n" -eq 0 ]; then
+  _cy_n=$#
+  if [ "$_cy_n" -eq 0 ]; then
     echo 0
     return 0
   fi
-  sum=0
-  for x in "$@"; do
-    sum=$(( sum + x ))
+  _cy_sum=0
+  for _cy_x in "$@"; do
+    _cy_sum=$(( _cy_sum + _cy_x ))
   done
-  echo $(( sum / n ))
+  echo $(( _cy_sum / _cy_n ))
 }
 
 # --- persist session state for the Claude Code statusline --------------------
@@ -91,43 +91,47 @@ _canary_write_state() {
 
 # --- map a 0-100 score to the bird art, set CANARY_BIRD, print it ------------
 _canary_render() {
-  score=$1
-  force=${2:-}                 # non-empty -> always show the score line
-  if   [ "$score" -le 20 ]; then name=fresh;  l1=' ▗███▖';   l2='▐ O ▌>'
-  elif [ "$score" -le 45 ]; then name=chirpy; l1=' ▗███▖ ♪'; l2='▐ ^ ▌>'
-  elif [ "$score" -le 70 ]; then name=tired;  l1=' ▗███▖';  l2='▐ - ▌>'
-  elif [ "$score" -le 90 ]; then name=worn;   l1=' ▗▓▓▓▖';  l2='▐ ~ ▌>'
-  else                           name=dead;   l1=' ▗░░░▖';  l2='░ x ▌v'
+  _cy_score=$1
+  _cy_force=${2:-}             # non-empty -> always show the score line
+  if   [ "$_cy_score" -le 20 ]; then _cy_name=fresh;  _cy_l1=' ▗███▖';   _cy_l2='▐ O ▌>'
+  elif [ "$_cy_score" -le 45 ]; then _cy_name=chirpy; _cy_l1=' ▗███▖ ♪'; _cy_l2='▐ ^ ▌>'
+  elif [ "$_cy_score" -le 70 ]; then _cy_name=tired;  _cy_l1=' ▗███▖';  _cy_l2='▐ - ▌>'
+  elif [ "$_cy_score" -le 90 ]; then _cy_name=worn;   _cy_l1=' ▗▓▓▓▖';  _cy_l2='▐ ~ ▌>'
+  else                               _cy_name=dead;   _cy_l1=' ▗░░░▖';  _cy_l2='░ x ▌v'
   fi
 
-  CANARY_BIRD="$l1
-$l2"
+  # public: the two bird rows, for anyone building a custom prompt.
+  # shellcheck disable=SC2034
+  CANARY_BIRD="$_cy_l1
+$_cy_l2"
 
-  if [ -n "${CANARY_SHOW_SCORE:-}" ] || [ -n "$force" ]; then
-    printf '%s\n%s  [%s %s]\n' "$l1" "$l2" "$name" "$score"
+  if [ -n "${CANARY_SHOW_SCORE:-}" ] || [ -n "$_cy_force" ]; then
+    printf '%s\n%s  [%s %s]\n' "$_cy_l1" "$_cy_l2" "$_cy_name" "$_cy_score"
   else
-    printf '%s\n%s\n' "$l1" "$l2"
+    printf '%s\n%s\n' "$_cy_l1" "$_cy_l2"
   fi
 
-  if [ "$name" = dead ]; then
+  if [ "$_cy_name" = dead ]; then
     printf '%s\n' '  tweet… you look fried. reset with  CANARY_RESET=1'
   fi
 }
 
 # --- compute the 0-100 fatigue score from current session state -------------
 _canary_score() {
-  min=$(( CANARY_ACTIVE_SECONDS / 60 ))      # active minutes (idle excluded)
-  avglen=$(_canary_avg)
-  s=$(( min / 3 + CANARY_PROMPT_COUNT / 2 + avglen / 10 ))
+  _cy_min=$(( CANARY_ACTIVE_SECONDS / 60 ))  # active minutes (idle excluded)
+  _cy_avglen=$(_canary_avg)
+  _cy_s=$(( _cy_min / 3 + CANARY_PROMPT_COUNT / 2 + _cy_avglen / 10 ))
 
   # circadian penalty (configurable; set CANARY_NIGHT_MULT=100 to disable)
-  hour=$(( 10#$(date +%H) ))
-  if [ "$hour" -ge "$CANARY_NIGHT_START" ] || [ "$hour" -lt "$CANARY_NIGHT_END" ]; then
-    s=$(( s * CANARY_NIGHT_MULT / 100 ))
+  # 10# forces base 10: `08`/`09` are invalid octal and would abort the shell.
+  # shellcheck disable=SC3052  # bash/zsh/ksh only; dash never reaches a prompt hook
+  _cy_hour=$(( 10#$(date +%H) ))
+  if [ "$_cy_hour" -ge "$CANARY_NIGHT_START" ] || [ "$_cy_hour" -lt "$CANARY_NIGHT_END" ]; then
+    _cy_s=$(( _cy_s * CANARY_NIGHT_MULT / 100 ))
   fi
 
-  [ "$s" -gt 100 ] && s=100
-  echo "$s"
+  [ "$_cy_s" -gt 100 ] && _cy_s=100
+  echo "$_cy_s"
 }
 
 # --- per-prompt: honor reset, recompute, draw -------------------------------
@@ -147,9 +151,9 @@ _canary_precmd() {
   # bash: arm the preexec flag for the next typed command
   _CANARY_AT_PROMPT=1
 
-  score=$(_canary_score)
-  [ "$score" -lt "$CANARY_MIN_SCORE" ] && return 0   # stay quiet below the threshold
-  _canary_render "$score"
+  _cy_pscore=$(_canary_score)
+  [ "$_cy_pscore" -lt "$CANARY_MIN_SCORE" ] && return 0  # stay quiet below the threshold
+  _canary_render "$_cy_pscore"
 }
 
 # --- `canary` command: on-demand status / control ---------------------------
@@ -183,12 +187,16 @@ if [ -n "${ZSH_VERSION:-}" ]; then
   add-zsh-hook precmd  _canary_precmd
 
 elif [ -n "${BASH_VERSION:-}" ]; then
-  # preexec emulation via DEBUG trap, gated by a once-per-prompt flag
+  # preexec emulation via DEBUG trap, gated by a once-per-prompt flag.
+  # SC3028/SC3047: BASH_COMMAND and trap DEBUG are bash-only — this whole branch
+  # is guarded by $BASH_VERSION, so a POSIX sh never evaluates it.
+  # shellcheck disable=SC3028
   _canary_debug() {
     [ -n "${_CANARY_AT_PROMPT:-}" ] || return 0
     _CANARY_AT_PROMPT=""
     _canary_record "$BASH_COMMAND"
   }
+  # shellcheck disable=SC3047
   trap '_canary_debug' DEBUG
 
   # precmd via PROMPT_COMMAND (don't clobber an existing one)

@@ -85,7 +85,10 @@ function _canary_render
         set name dead;   set l1 ' ▗░░░▖';  set l2 '░ x ▌v'
     end
 
-    set -g CANARY_BIRD "$l1\n$l2"
+    # a real newline, not a literal \n: fish does not expand escapes inside
+    # double quotes, so "$l1\n$l2" would hand callers a backslash-n.
+    set -g CANARY_BIRD "$l1
+$l2"
 
     if set -q CANARY_SHOW_SCORE; or test -n "$force"
         printf '%s\n%s  [%s %s]\n' $l1 $l2 $name $score
