@@ -9,6 +9,9 @@ set -eu
 
 CANARY_HOME="$HOME/.canary"
 REPO_RAW="https://raw.githubusercontent.com/thousandflowers/canary/main"
+# Marker for the login-shell chain line, so uninstall.sh can take back exactly
+# what we added and nothing else.
+CANARY_CHAIN_MARK='# canary — let login shells read .bashrc'
 
 # where this script lives (empty when piped through curl)
 SCRIPT_DIR=""
@@ -38,14 +41,38 @@ detect_rc() {
   shell_name=$(basename "${SHELL:-/bin/sh}")
   case "$shell_name" in
     zsh)  echo "zsh|$HOME/.zshrc|canary.sh" ;;
-    bash) if [ -f "$HOME/.bashrc" ]; then
-            echo "bash|$HOME/.bashrc|canary.sh"
-          else
-            echo "bash|$HOME/.bash_profile|canary.sh"
-          fi ;;
+    # Always ~/.bashrc, never .bash_profile. Interactive NON-login bash — what
+    # a Linux terminal opens — reads only .bashrc, so wiring .bash_profile
+    # there installs a bird that never loads. macOS terminals open LOGIN
+    # shells, which read .bash_profile and never .bashrc unless it is sourced
+    # from there, so main() also makes the login file chain to .bashrc.
+    bash) echo "bash|$HOME/.bashrc|canary.sh" ;;
     fish) echo "fish|$HOME/.config/fish/config.fish|canary.fish" ;;
     *)    echo "sh|$HOME/.profile|canary.sh" ;;
   esac
+}
+
+# --- make login bash read ~/.bashrc too --------------------------------------
+# For a login shell bash reads the FIRST of .bash_profile / .bash_login /
+# .profile that exists, and never .bashrc. macOS Terminal opens login shells,
+# so without this the bird is wired into a file that shell never reads.
+# Idempotent, and it edits in place so a dotfiles symlink survives.
+ensure_bash_chain() {
+  # single-quoted on purpose: $HOME must land in the rc file literally, so the
+  # line keeps working if the home directory ever moves
+  # shellcheck disable=SC2016
+  chain='[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"'
+  for f in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+    [ -f "$f" ] || continue
+    # already chains (ours or the user's own) — leave it alone
+    grep -q '\.bashrc' "$f" 2>/dev/null && return 0
+    printf '\n%s\n%s\n' "$CANARY_CHAIN_MARK" "$chain" >> "$f"
+    echo "canary: login shells now read ~/.bashrc ($f)"
+    return 0
+  done
+  # No login rc exists at all, so creating the one bash prefers shadows nothing.
+  printf '%s\n%s\n' "$CANARY_CHAIN_MARK" "$chain" > "$HOME/.bash_profile"
+  echo "canary: created $HOME/.bash_profile so login shells read ~/.bashrc"
 }
 
 # --- idempotent source line --------------------------------------------------
@@ -124,6 +151,7 @@ main() {
     line="[ -f \"$CANARY_HOME/$asset\" ] && . \"$CANARY_HOME/$asset\""
   fi
   ensure_line "$rc" "$line"
+  [ "$shell_name" = bash ] && ensure_bash_chain
 
   # Claude Code statusline (optional; needs jq + a Claude Code config dir)
   if fetch "canary-statusline.sh" "$CANARY_HOME/canary-statusline.sh" 2>/dev/null; then

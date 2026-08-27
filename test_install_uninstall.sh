@@ -50,6 +50,48 @@ assert_no  "uninstall-rc-clean" "$(cat "$H/.bashrc")" '.canary/canary.sh'
 assert_has "uninstall-rc-keeps" "$(cat "$H/.bashrc")" 'export PREEXISTING=1'
 [ -d "$H/.canary" ] && { echo "FAIL [uninstall-home]: ~/.canary survived"; fails=$((fails+1)); }
 
+# --- 3b. REGRESSION: bash must load in BOTH login and non-login shells -------
+# install.sh used to wire ~/.bash_profile whenever ~/.bashrc did not exist.
+# A Linux terminal opens an interactive NON-login shell, which reads .bashrc and
+# never .bash_profile — so canary was installed into a file that shell never
+# reads and the bird simply never appeared. macOS has the mirror problem: its
+# terminals open LOGIN shells, which read .bash_profile and never .bashrc.
+# The fix wires .bashrc always and chains the login rc to it, so all four
+# starting states have to work in both shell modes.
+bash_loads() { # <home> <login|nonlogin> -> "yes"/"no"
+  if [ "$2" = login ]; then set -- "$1" -l -i; else set -- "$1" -i; fi
+  h=$1; shift
+  out=$(printf 'canary score\nexit\n' | env HOME="$h" CANARY_NIGHT_MULT=100 /bin/bash "$@" 2>&1)
+  case "$out" in *"command not found"*) echo no ;; *) echo yes ;; esac
+}
+
+for start in none bashrc-only profile-only both; do
+  H=$(newhome)
+  case $start in
+    bashrc-only)  printf 'export KEEP=1\n' > "$H/.bashrc" ;;
+    profile-only) printf 'export KEEP=1\n' > "$H/.bash_profile" ;;
+    both)         printf 'export KEEP=1\n' > "$H/.bashrc"; printf 'export KEEP=1\n' > "$H/.bash_profile" ;;
+  esac
+  install_into "$H"
+  assert_eq "bash-$start-nonlogin" "$(bash_loads "$H" nonlogin)" "yes"
+  assert_eq "bash-$start-login"    "$(bash_loads "$H" login)"    "yes"
+
+  # uninstall takes back everything it added, including the chain line
+  uninstall_from "$H"
+  left=$(cat "$H"/.bashrc "$H"/.bash_profile 2>/dev/null | grep -c 'canary' || true)
+  assert_eq "bash-$start-uninstall-clean" "$left" "0"
+  assert_eq "bash-$start-after-uninstall" "$(bash_loads "$H" nonlogin)" "no"
+done
+
+# a .bashrc chain the USER wrote must survive uninstall — we only take back the
+# line we added, identified by our own marker comment sitting beside it
+H=$(newhome)
+printf 'export KEEP=1\n[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' > "$H/.bash_profile"
+printf 'export KEEP=1\n' > "$H/.bashrc"
+install_into "$H"; uninstall_from "$H"
+assert_has "user-chain-kept" "$(cat "$H/.bash_profile")" '. "$HOME/.bashrc"'
+assert_no  "user-chain-no-canary" "$(cat "$H/.bash_profile")" 'canary'
+
 # --- 4. REGRESSION: a symlinked rc must survive uninstall --------------------
 # ~/.zshrc is very often a symlink into a dotfiles repo. uninstall.sh used to
 # `mv` a temp file over it, which replaced the symlink with a regular file AND
