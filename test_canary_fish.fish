@@ -66,7 +66,7 @@ end
 
 # --- 2. score formula, identical to canary.sh --------------------------------
 # 3600s = 60min -> 20 ; 40 prompts -> 20 ; avg len 50 -> 5 ; total 45
-set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_PROMPT_COUNT 40; set -g CANARY_LENS 50 50; _canary_score")
+set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_PROMPT_COUNT 40; set -g CANARY_LEN_SUM 2000; _canary_score")
 assert_eq "score-formula" "$out" "45"
 
 set out (run "set -g CANARY_ACTIVE_SECONDS 999999; set -g CANARY_PROMPT_COUNT 9999; _canary_score")
@@ -75,19 +75,21 @@ assert_eq "score-clamped" "$out" "100"
 set out (run "_canary_score")
 assert_eq "score-zero" "$out" "0"
 
-# --- 3. rolling average + 20-sample window -----------------------------------
+# --- 3. mean command length ---------------------------------------------------
 set out (run "_canary_avg")
 assert_eq "avg-empty" "$out" "0"
-set out (run "set -g CANARY_LENS 10 20 30; _canary_avg")
+set out (run "set -g CANARY_PROMPT_COUNT 3; set -g CANARY_LEN_SUM 60; _canary_avg")
 assert_eq "avg-mean" "$out" "20"
 
-set out (run "for i in (seq 25); _canary_record xx; end; count \$CANARY_LENS")
-assert_eq "avg-window-20" "$out" "20"
+# sum and denominator must stay in step, exactly as in canary.sh
+# bare (...) inside a double-quoted fish string is literal, so this substitution
+# runs in the child shell, not here
+set out (run "for i in (seq 25); _canary_record xx; end; echo \$CANARY_LEN_SUM/\$CANARY_PROMPT_COUNT=(_canary_avg)")
+assert_eq "avg-running-sum" "$out" "50/25=2"
 
-# the window keeps the NEWEST samples: after 21 commands of growing length the
-# 1-char sample must have aged out, leaving 2 as the oldest
-set out (run "for i in (seq 1 21); _canary_record (string repeat -n \$i x); end; echo \$CANARY_LENS[1]")
-assert_eq "avg-window-newest" "$out" "2"
+# an ignored empty command must move neither
+set out (run "_canary_record abcd; _canary_record ''; echo \$CANARY_LEN_SUM/\$CANARY_PROMPT_COUNT")
+assert_eq "avg-empty-not-summed" "$out" "4/1"
 
 # --- 4. idle gaps don't age the bird -----------------------------------------
 set out (run "set -g CANARY_IDLE_THRESHOLD 1; set -g CANARY_LAST_ACTIVE (math (date +%s) - 3600); _canary_record ls; echo \$CANARY_ACTIVE_SECONDS")
@@ -116,7 +118,6 @@ assert_has "min-score-loud" "$out" '▐ O ▌>'
 set -g S "$TMP/state.explicit"
 fish --no-config -i -c "set -g CANARY_STATE_FILE "(string escape -- $S)"; source $SCRIPT_Q; _canary_record hello; _canary_record worldly" >/dev/null 2>&1
 set out (cat $S 2>/dev/null | string join '|')
-assert_has "state-start" "$out" "timestamp_start="
 assert_has "state-count" "$out" "prompt_count=2"
 assert_has "state-avg" "$out" "avg_prompt_len=6"
 assert_has "state-active" "$out" "active_seconds="
@@ -126,8 +127,8 @@ set out (env CANARY_NIGHT_MULT=100 CANARY_STATE_FILE=$S CANARY_HISTORY_FILE=$TMP
 assert_has "state-roundtrip" "$out" "2p"
 
 # --- 9. reset wipes the session ----------------------------------------------
-set out (run "_canary_record ls; set -g CANARY_RESET 1; _canary_compute >/dev/null; echo \$CANARY_PROMPT_COUNT/\$CANARY_ACTIVE_SECONDS/"'(set -q CANARY_RESET; and echo set; or echo unset)')
-assert_eq "reset" "$out" "0/0/unset"
+set out (run "_canary_record ls; set -g CANARY_RESET 1; _canary_compute >/dev/null; echo \$CANARY_PROMPT_COUNT/\$CANARY_LEN_SUM/\$CANARY_ACTIVE_SECONDS/"'(set -q CANARY_RESET; and echo set; or echo unset)')
+assert_eq "reset" "$out" "0/0/0/unset"
 
 # --- 10. the `canary` command ------------------------------------------------
 set out (run "canary")
@@ -147,11 +148,9 @@ assert_eq "cmd-unknown-exit" "$out" "exit=1"
 set out (run "_canary_record ls; source $SCRIPT_Q; echo \$CANARY_PROMPT_COUNT")
 assert_eq "load-guard" "$out" "1"
 
-# --- 12. REGRESSION: CANARY_BIRD holds a real newline, not a literal \n ------
-# fish does not expand escapes inside double quotes, so `"$l1\n$l2"` used to
-# hand callers a backslash-n instead of two rows.
-set out (run "_canary_render 5 >/dev/null; count (string split \n -- \$CANARY_BIRD)")
-assert_eq "bird-real-newline" "$out" "2"
+# --- 12. the bird prints two rows, not one -----------------------------------
+set out (run "_canary_render 5 | count")
+assert_eq "bird-two-rows" "$out" "2"
 
 # --- 13. fish_prompt is wrapped, not destroyed -------------------------------
 set out (fish --no-config -i -c "function fish_prompt; echo MINE; end; source $SCRIPT_Q; set -g CANARY_MIN_SCORE 99; fish_prompt" 2>/dev/null | string join \n)

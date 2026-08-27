@@ -90,21 +90,16 @@ else
   statname="p"
   [ -L "$STATE" ] && exit 0
   [ -f "$STATE" ] || exit 0
-  ts_start=0; prompt_count=0; avg_len=0; active=-1
+  prompt_count=0; avg_len=0; active=0
   while IFS='=' read -r k v; do
     v=$(printf '%s' "$v" | tr -cd '0-9')
     case "$k" in
-      timestamp_start) ts_start=${v:-0} ;;
-      prompt_count)    prompt_count=${v:-0} ;;
-      avg_prompt_len)  avg_len=${v:-0} ;;
-      active_seconds)  active=${v:--1} ;;
+      prompt_count)   prompt_count=${v:-0} ;;
+      avg_prompt_len) avg_len=${v:-0} ;;
+      active_seconds) active=${v:-0} ;;
     esac
   done < "$STATE"
-  if [ "$active" -ge 0 ]; then
-    min=$(( active / 60 ))
-  else
-    min=$(( ($(date +%s) - ts_start) / 60 )); [ "$min" -lt 0 ] && min=0
-  fi
+  min=$(( active / 60 ))
   turns=$prompt_count
   raw=$(( min / 3 + prompt_count / 2 + avg_len / 10 ))
 fi

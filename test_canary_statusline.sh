@@ -2,8 +2,8 @@
 # Self-check for canary-statusline.sh — no framework, just asserts.
 #   bash test_canary_statusline.sh   # exits non-zero on any failure
 #
-# Circadian penalty and cadence are pinned off (NIGHT_MULT=100, CADENCE_BASE
-# huge) so scores are deterministic regardless of wall-clock time of day.
+# The circadian penalty is pinned off (NIGHT_MULT=100) so scores are
+# deterministic regardless of wall-clock time of day.
 
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -26,7 +26,7 @@ ccjson() { printf '{"transcript_path":"%s","cost":{"total_duration_ms":%s}}' "$1
 
 run() { # stdin, extra env... → output. fresh history per run unless caller pins it.
   local in=$1; shift
-  printf '%s' "$in" | env CANARY_NIGHT_MULT=100 CANARY_CADENCE_BASE=999999 \
+  printf '%s' "$in" | env CANARY_NIGHT_MULT=100 \
     CANARY_HISTORY_FILE="$TMP/h.$RANDOM" "$@" bash "$SCRIPT"
 }
 
@@ -57,7 +57,7 @@ out=$(run "$(ccjson "$TMP/t4" 300000)" CANARY_SHOW_SCORE=1)
 assert_has "reps-band" "$out" "fresh"      # 1 + 3 + 10 = 14 ≤ 20
 
 # 5) shell fallback: no transcript_path → reads canary-state
-printf 'timestamp_start=0\nactive_seconds=600\nprompt_count=10\navg_prompt_len=50\n' > "$TMP/state"
+printf 'active_seconds=600\nprompt_count=10\navg_prompt_len=50\n' > "$TMP/state"
 out=$(run "" CANARY_STATE_FILE="$TMP/state")
 assert_has "shell-band"  "$out" "fresh"    # 10/3 + 10/2 + 50/10 = 3+5+5 = 13
 assert_has "shell-label" "$out" "10p"
@@ -75,7 +75,7 @@ assert_empty "min-score" "$out"
 H="$TMP/anti"; today=$(( $(date +%s) / 86400 )); echo "$((today-10)) 95" > "$H"
 mk "$TMP/t8" 144 0 0
 out=$(printf '%s' "$(ccjson "$TMP/t8" 3600000)" | env CANARY_NIGHT_MULT=100 \
-  CANARY_CADENCE_BASE=999999 CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
+  CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
 assert_has "anti-demote" "$out" "worn"
 assert_has "anti-eye"    "$out" "▐ ~ ▌>"
 
@@ -83,7 +83,7 @@ assert_has "anti-eye"    "$out" "▐ ~ ▌>"
 H2="$TMP/esc"; printf '%s 95\n%s 95\n' "$((today-1))" "$((today-2))" > "$H2"
 mk "$TMP/t9" 2 0 0
 out=$(printf '%s' "$(ccjson "$TMP/t9" 180000)" | env CANARY_NIGHT_MULT=100 \
-  CANARY_CADENCE_BASE=999999 CANARY_HISTORY_FILE="$H2" bash "$SCRIPT")
+  CANARY_HISTORY_FILE="$H2" bash "$SCRIPT")
 assert_has "escalation" "$out" "nights past your limit"
 
 # 10) missing transcript path → no turns, no crash, time-only score

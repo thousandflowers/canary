@@ -20,14 +20,13 @@ _CANARY_LOADED=1
 # --- session state (set once per shell) --------------------------------------
 : "${CANARY_START_TIME:=$(date +%s)}"
 : "${CANARY_PROMPT_COUNT:=0}"
-: "${CANARY_LENS:=}"          # space-separated lengths of last 20 commands
+: "${CANARY_LEN_SUM:=0}"                      # running total of command lengths
 : "${CANARY_ACTIVE_SECONDS:=0}"               # accrued active (non-idle) seconds
 : "${CANARY_LAST_ACTIVE:=$CANARY_START_TIME}" # epoch of the last recorded command
 : "${CANARY_STATE_FILE:=$HOME/.canary/canary-state}"  # the Claude Code statusline reads this
 [ -d "${CANARY_STATE_FILE%/*}" ] || mkdir -p "${CANARY_STATE_FILE%/*}" 2>/dev/null
 
 # --- tunables ----------------------------------------------------------------
-_CANARY_LEN_WINDOW=20                 # rolling window for avg prompt length
 : "${CANARY_NIGHT_START:=22}"         # circadian penalty starts at/after this hour
 : "${CANARY_NIGHT_END:=7}"            # ...and before this hour
 : "${CANARY_NIGHT_MULT:=130}"         # penalty as percent: 100 = off, 130 = x1.3
@@ -39,8 +38,6 @@ _CANARY_LEN_WINDOW=20                 # rolling window for avg prompt length
 
 # --- record one executed command --------------------------------------------
 _canary_record() {
-  # zsh does not word-split unquoted expansions; opt in, locally, for the splits below
-  [ -n "${ZSH_VERSION:-}" ] && setopt localoptions shwordsplit 2>/dev/null
   _cy_cmd=$1
   # ignore empty lines (bare Enter)
   [ -z "$_cy_cmd" ] && return 0
@@ -52,44 +49,31 @@ _canary_record() {
   CANARY_LAST_ACTIVE=$_cy_now
 
   CANARY_PROMPT_COUNT=$(( CANARY_PROMPT_COUNT + 1 ))
-  _cy_len=${#_cy_cmd}
-  CANARY_LENS="$CANARY_LENS $_cy_len"
-  # keep only the last _CANARY_LEN_WINDOW samples
-  # shellcheck disable=SC2086
-  set -- $CANARY_LENS
-  while [ "$#" -gt "$_CANARY_LEN_WINDOW" ]; do shift; done
-  CANARY_LENS="$*"
+  CANARY_LEN_SUM=$(( CANARY_LEN_SUM + ${#_cy_cmd} ))
 
   _canary_write_state
 }
 
-# --- rolling average of recorded lengths -------------------------------------
+# --- mean command length, over the whole session -----------------------------
+# A running sum over the same commands PROMPT_COUNT counts. This used to keep a
+# list of the last 20 lengths and shift it with `set --`, which needed `setopt
+# shwordsplit` under zsh in two places — a lot of shell arcana for a term worth
+# a few points out of 100, and inconsistent with `min` and `count`, which have
+# always been cumulative.
 _canary_avg() {
-  # zsh does not word-split unquoted expansions; opt in, locally
-  [ -n "${ZSH_VERSION:-}" ] && setopt localoptions shwordsplit 2>/dev/null
-  # shellcheck disable=SC2086
-  set -- $CANARY_LENS
-  _cy_n=$#
-  if [ "$_cy_n" -eq 0 ]; then
-    echo 0
-    return 0
-  fi
-  _cy_sum=0
-  for _cy_x in "$@"; do
-    _cy_sum=$(( _cy_sum + _cy_x ))
-  done
-  echo $(( _cy_sum / _cy_n ))
+  [ "$CANARY_PROMPT_COUNT" -gt 0 ] || { echo 0; return 0; }
+  echo $(( CANARY_LEN_SUM / CANARY_PROMPT_COUNT ))
 }
 
 # --- persist session state for the Claude Code statusline --------------------
 _canary_write_state() {
   [ -n "${CANARY_STATE_FILE:-}" ] || return 0
-  printf 'timestamp_start=%s\nprompt_count=%s\navg_prompt_len=%s\nactive_seconds=%s\n' \
-    "$CANARY_START_TIME" "$CANARY_PROMPT_COUNT" "$(_canary_avg)" "$CANARY_ACTIVE_SECONDS" \
+  printf 'prompt_count=%s\navg_prompt_len=%s\nactive_seconds=%s\n' \
+    "$CANARY_PROMPT_COUNT" "$(_canary_avg)" "$CANARY_ACTIVE_SECONDS" \
     > "$CANARY_STATE_FILE" 2>/dev/null
 }
 
-# --- map a 0-100 score to the bird art, set CANARY_BIRD, print it ------------
+# --- map a 0-100 score to the bird art and print it --------------------------
 _canary_render() {
   _cy_score=$1
   _cy_force=${2:-}             # non-empty -> always show the score line
@@ -99,11 +83,6 @@ _canary_render() {
   elif [ "$_cy_score" -le 90 ]; then _cy_name=worn;   _cy_l1=' ▗▓▓▓▖';  _cy_l2='▐ ~ ▌>'
   else                               _cy_name=dead;   _cy_l1=' ▗░░░▖';  _cy_l2='░ x ▌v'
   fi
-
-  # public: the two bird rows, for anyone building a custom prompt.
-  # shellcheck disable=SC2034
-  CANARY_BIRD="$_cy_l1
-$_cy_l2"
 
   if [ -n "${CANARY_SHOW_SCORE:-}" ] || [ -n "$_cy_force" ]; then
     printf '%s\n%s  [%s %s]\n' "$_cy_l1" "$_cy_l2" "$_cy_name" "$_cy_score"
@@ -141,7 +120,7 @@ _canary_precmd() {
   if [ -n "${CANARY_RESET:-}" ]; then
     CANARY_START_TIME=$(date +%s)
     CANARY_PROMPT_COUNT=0
-    CANARY_LENS=""
+    CANARY_LEN_SUM=0
     CANARY_ACTIVE_SECONDS=0
     CANARY_LAST_ACTIVE=$CANARY_START_TIME
     unset CANARY_RESET
@@ -159,12 +138,12 @@ _canary_precmd() {
 # --- `canary` command: on-demand status / control ---------------------------
 canary() {
   case "${1:-status}" in
-    status|--status|"")
+    status)
       _canary_render "$(_canary_score)" show ;;
-    score|--score)
+    score)
       _canary_score ;;
-    reset|--reset)
-      CANARY_START_TIME=$(date +%s); CANARY_PROMPT_COUNT=0; CANARY_LENS=""
+    reset)
+      CANARY_START_TIME=$(date +%s); CANARY_PROMPT_COUNT=0; CANARY_LEN_SUM=0
       CANARY_ACTIVE_SECONDS=0; CANARY_LAST_ACTIVE=$CANARY_START_TIME
       _canary_write_state
       echo "canary: reset"; _canary_render "$(_canary_score)" show ;;

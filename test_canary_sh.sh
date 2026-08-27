@@ -65,7 +65,7 @@ esac
 
 # --- 2. score formula: min/3 + count/2 + avglen/10 ---------------------------
 # 3600s active = 60min -> 20 ; 40 prompts -> 20 ; avg len 50 -> 5 ; total 45
-out=$(run CANARY_ACTIVE_SECONDS=3600 CANARY_PROMPT_COUNT=40 CANARY_LENS="50 50" -- '_canary_score')
+out=$(run CANARY_ACTIVE_SECONDS=3600 CANARY_PROMPT_COUNT=40 CANARY_LEN_SUM=2000 -- '_canary_score')
 assert_eq "score-formula" "$out" "45"
 
 # score is clamped to 100, never above
@@ -75,17 +75,18 @@ assert_eq "score-clamped" "$out" "100"
 # an untouched session scores 0
 assert_eq "score-zero" "$(run -- '_canary_score')" "0"
 
-# --- 3. rolling average + window ---------------------------------------------
+# --- 3. mean command length ---------------------------------------------------
 assert_eq "avg-empty" "$(run -- '_canary_avg')" "0"
-assert_eq "avg-mean"  "$(run CANARY_LENS='10 20 30' -- '_canary_avg')" "20"
+assert_eq "avg-mean"  "$(run CANARY_PROMPT_COUNT=3 CANARY_LEN_SUM=60 -- '_canary_avg')" "20"
 
-# only the last 20 samples survive: 25 recorded commands -> 20 kept
-out=$(run -- 'i=0; while [ $i -lt 25 ]; do _canary_record "xx"; i=$((i+1)); done; set -- $CANARY_LENS; echo $#')
-assert_eq "avg-window-20" "$out" "20"
+# the sum tracks every recorded command, and the denominator is PROMPT_COUNT —
+# the two must stay in step or the average drifts
+out=$(run -- 'i=0; while [ $i -lt 25 ]; do _canary_record "xx"; i=$((i+1)); done; echo "$CANARY_LEN_SUM/$CANARY_PROMPT_COUNT=$(_canary_avg)"')
+assert_eq "avg-running-sum" "$out" "50/25=2"
 
-# ...and the window keeps the NEWEST samples, not the oldest
-out=$(run -- 'i=1; while [ $i -le 21 ]; do _canary_record "$(printf "%${i}s" "")"; i=$((i+1)); done; set -- $CANARY_LENS; echo "$1 $#"')
-assert_eq "avg-window-newest" "$out" "2 20"   # the 1-char sample aged out
+# ...and an ignored empty command must move neither
+out=$(run -- '_canary_record "abcd"; _canary_record ""; echo "$CANARY_LEN_SUM/$CANARY_PROMPT_COUNT"')
+assert_eq "avg-empty-not-summed" "$out" "4/1"
 
 # --- 4. idle gaps don't age the bird -----------------------------------------
 # a gap larger than the threshold is a break: active time must not grow
@@ -117,7 +118,6 @@ assert_empty "disabled" "$(run CANARY_DISABLED=1 -- '_canary_precmd 2>/dev/null'
 # --- 8. state file: the fields the statusline reads --------------------------
 S="$TMP/state.explicit"
 run CANARY_STATE_FILE="$S" -- '_canary_record "hello"; _canary_record "worldly"' >/dev/null
-assert_has "state-start"  "$(cat "$S")" "timestamp_start="
 assert_has "state-count"  "$(cat "$S")" "prompt_count=2"
 assert_has "state-avg"    "$(cat "$S")" "avg_prompt_len=6"   # (5+7)/2
 assert_has "state-active" "$(cat "$S")" "active_seconds="
@@ -128,8 +128,8 @@ out=$(env CANARY_NIGHT_MULT=100 CANARY_STATE_FILE="$S" CANARY_HISTORY_FILE="$TMP
 assert_has "state-roundtrip" "$out" "2p"
 
 # --- 9. reset wipes the session ----------------------------------------------
-out=$(run -- '_canary_record "ls"; CANARY_RESET=1; _canary_precmd >/dev/null; echo "$CANARY_PROMPT_COUNT/$CANARY_ACTIVE_SECONDS/${CANARY_RESET:-unset}"')
-assert_eq "reset" "$out" "0/0/unset"
+out=$(run -- '_canary_record "ls"; CANARY_RESET=1; _canary_precmd >/dev/null; echo "$CANARY_PROMPT_COUNT/$CANARY_LEN_SUM/$CANARY_ACTIVE_SECONDS/${CANARY_RESET:-unset}"')
+assert_eq "reset" "$out" "0/0/0/unset"
 
 # --- 10. the `canary` command ------------------------------------------------
 assert_has "cmd-status"  "$(run -- 'canary')"        '▐ O ▌>'

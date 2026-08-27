@@ -11,14 +11,13 @@ set -g _CANARY_LOADED 1
 # --- session state -----------------------------------------------------------
 set -q CANARY_START_TIME;  or set -g CANARY_START_TIME (date +%s)
 set -q CANARY_PROMPT_COUNT; or set -g CANARY_PROMPT_COUNT 0
-set -q CANARY_LENS;        or set -g CANARY_LENS
+set -q CANARY_LEN_SUM;     or set -g CANARY_LEN_SUM 0
 set -q CANARY_ACTIVE_SECONDS; or set -g CANARY_ACTIVE_SECONDS 0
 set -q CANARY_LAST_ACTIVE;    or set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
 set -q CANARY_STATE_FILE;     or set -g CANARY_STATE_FILE $HOME/.canary/canary-state
 mkdir -p (dirname $CANARY_STATE_FILE) 2>/dev/null
 
 # --- tunables (night penalty configurable; CANARY_NIGHT_MULT=100 disables) ---
-set -g _CANARY_LEN_WINDOW 20
 set -q CANARY_NIGHT_START; or set -g CANARY_NIGHT_START 22
 set -q CANARY_NIGHT_END;   or set -g CANARY_NIGHT_END 7
 set -q CANARY_NIGHT_MULT;  or set -g CANARY_NIGHT_MULT 130
@@ -37,38 +36,31 @@ function _canary_record --on-event fish_preexec
     set -g CANARY_LAST_ACTIVE $now
 
     set -g CANARY_PROMPT_COUNT (math $CANARY_PROMPT_COUNT + 1)
-    set -ga CANARY_LENS (string length -- "$cmd")
-    set -l n (count $CANARY_LENS)
-    if test $n -gt $_CANARY_LEN_WINDOW
-        set -e CANARY_LENS[1..(math $n - $_CANARY_LEN_WINDOW)]
-    end
+    set -g CANARY_LEN_SUM (math $CANARY_LEN_SUM + (string length -- "$cmd"))
 
     _canary_write_state
 end
 
-# --- rolling average ---------------------------------------------------------
+# --- mean command length, over the whole session -----------------------------
+# A running sum over the same commands PROMPT_COUNT counts — see canary.sh for
+# why the last-20 window went away.
 function _canary_avg
-    set -l n (count $CANARY_LENS)
-    if test $n -eq 0
+    test $CANARY_PROMPT_COUNT -gt 0; or begin
         echo 0
         return
     end
-    set -l sum 0
-    for x in $CANARY_LENS
-        set sum (math $sum + $x)
-    end
-    math "floor($sum / $n)"
+    math "floor($CANARY_LEN_SUM / $CANARY_PROMPT_COUNT)"
 end
 
 # --- persist session state for the Claude Code statusline --------------------
 function _canary_write_state
     test -n "$CANARY_STATE_FILE"; or return
-    printf 'timestamp_start=%s\nprompt_count=%s\navg_prompt_len=%s\nactive_seconds=%s\n' \
-        $CANARY_START_TIME $CANARY_PROMPT_COUNT (_canary_avg) $CANARY_ACTIVE_SECONDS \
+    printf 'prompt_count=%s\navg_prompt_len=%s\nactive_seconds=%s\n' \
+        $CANARY_PROMPT_COUNT (_canary_avg) $CANARY_ACTIVE_SECONDS \
         >$CANARY_STATE_FILE 2>/dev/null
 end
 
-# --- map score -> art, set CANARY_BIRD, print -------------------------------
+# --- map score -> art, print -------------------------------------------------
 function _canary_render
     set -l score $argv[1]
     set -l force $argv[2]   # non-empty -> always show the score line
@@ -84,11 +76,6 @@ function _canary_render
     else
         set name dead;   set l1 ' ▗░░░▖';  set l2 '░ x ▌v'
     end
-
-    # a real newline, not a literal \n: fish does not expand escapes inside
-    # double quotes, so "$l1\n$l2" would hand callers a backslash-n.
-    set -g CANARY_BIRD "$l1
-$l2"
 
     if set -q CANARY_SHOW_SCORE; or test -n "$force"
         printf '%s\n%s  [%s %s]\n' $l1 $l2 $name $score
@@ -122,7 +109,7 @@ function _canary_compute
     if set -q CANARY_RESET
         set -g CANARY_START_TIME (date +%s)
         set -g CANARY_PROMPT_COUNT 0
-        set -g CANARY_LENS
+        set -g CANARY_LEN_SUM 0
         set -g CANARY_ACTIVE_SECONDS 0
         set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
         set -e CANARY_RESET
@@ -139,14 +126,14 @@ function canary
     set -l cmd $argv[1]
     test -z "$cmd"; and set cmd status
     switch $cmd
-        case status --status
+        case status
             _canary_render (_canary_score) show
-        case score --score
+        case score
             _canary_score
-        case reset --reset
+        case reset
             set -g CANARY_START_TIME (date +%s)
             set -g CANARY_PROMPT_COUNT 0
-            set -g CANARY_LENS
+            set -g CANARY_LEN_SUM 0
             set -g CANARY_ACTIVE_SECONDS 0
             set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
             _canary_write_state
