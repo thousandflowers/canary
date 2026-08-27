@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends shellcheck
+      - name: lint every shell script
+        # -x follows sourced files. canary.sh carries targeted `shellcheck
+        # disable=` comments for the bash-only branch it guards with $BASH_VERSION.
+        run: shellcheck -x canary.sh canary-statusline.sh install.sh uninstall.sh test_*.sh
+
+  test:
+    name: test (${{ matrix.os }})
+    # macOS ships bash 3.2, Ubuntu ships bash 5.x. Both must pass — the test
+    # harness has already been bitten by 3.2's empty-array-under-set-u rule.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash version
+        run: bash --version | head -1
+      - name: statusline bird
+        run: bash test_canary_statusline.sh
+      - name: prompt bird
+        run: bash test_canary_sh.sh
+      - name: install / uninstall
+        run: bash test_install_uninstall.sh
+      - name: zsh smoke
+        # canary.sh's primary audience is zsh; make sure it at least loads,
+        # scores and renders there. Ubuntu has no zsh preinstalled.
+        run: |
+          if ! command -v zsh >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends zsh
+          fi
+          out=$(zsh -c '
+            export CANARY_NIGHT_MULT=100 CANARY_STATE_FILE=$(mktemp -d)/s
+            source ./canary.sh
+            _canary_record "git status"
+            canary status
+          ')
+          printf '%s\n' "$out"
+          case "$out" in
+            *'▐ O ▌>'*) echo "zsh ok" ;;
+            *) echo "zsh smoke failed"; exit 1 ;;
+          esac
+
+  fish:
+    name: fish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install fish
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends fish
+      - name: fish version
+        run: fish --version
+      - name: syntax check
+        run: fish --no-execute canary.fish
+      - name: fish bird
+        run: fish test_canary_fish.fish

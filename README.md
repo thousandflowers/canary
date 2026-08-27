@@ -1,5 +1,7 @@
 # canary
 
+[![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
+
 > ⚠️ Alpha - in active development. Not ready for daily use yet.
 
 a tiny pixel-art bird that lives in your shell prompt and slowly wilts the
@@ -145,6 +147,22 @@ bird gone. rc cleaned. `~/.canary` removed.
 
 ## shell
 zsh, bash, fish. UTF-8 terminal required.
+
+## hacking
+no build step, no dependencies. the tests are plain asserts - run them directly:
+```sh
+bash test_canary_sh.sh            # the shell-prompt bird
+bash test_canary_statusline.sh    # the Claude Code statusline bird
+bash test_install_uninstall.sh    # installer, in a throwaway $HOME
+fish test_canary_fish.fish        # the fish bird (needs fish)
+shellcheck -x canary.sh canary-statusline.sh install.sh uninstall.sh test_*.sh
+```
+CI runs all of it on ubuntu + macOS, plus a zsh smoke test. macOS still ships
+bash 3.2, so the suites stay 3.2-compatible.
+
+the three birds must agree: `canary.sh`, `canary.fish` and
+`canary-statusline.sh` share one score formula and one state-file format, and
+the suites assert that parity rather than each implementation in isolation.
 
 ## license
 MIT. see LICENSE.
