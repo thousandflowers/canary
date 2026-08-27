@@ -9,6 +9,7 @@ set -eu
 
 CANARY_HOME="$HOME/.canary"
 REPO_RAW="https://raw.githubusercontent.com/thousandflowers/canary/main"
+REPO_TARBALL="https://codeload.github.com/thousandflowers/canary/tar.gz/refs/heads/main"
 # Marker for the login-shell chain line, so uninstall.sh can take back exactly
 # what we added and nothing else.
 CANARY_CHAIN_MARK='# canary — let login shells read .bashrc'
@@ -34,6 +35,24 @@ fetch() {
     echo "canary: cannot find $name locally and curl is missing." >&2
     return 1
   fi
+}
+
+# --- the phrase corpus the statusline bird speaks from -----------------------
+# Copied whole rather than fetched file by file: it is twenty-odd small files and
+# a hand-maintained manifest would rot the first time somebody adds a category.
+# Local copy first (brew, or a git clone), tarball only when piped through curl.
+# Optional: with no corpus the bird simply never speaks, everything else works.
+fetch_phrases() {
+  mkdir -p "$CANARY_HOME/phrases"
+  if [ -n "$SCRIPT_DIR" ] && [ -d "$SCRIPT_DIR/phrases" ]; then
+    cp -R "$SCRIPT_DIR/phrases/." "$CANARY_HOME/phrases/"
+    return $?
+  fi
+  command -v curl >/dev/null 2>&1 || return 1
+  # an exact member path, not a glob: BSD tar and GNU tar disagree about
+  # --wildcards, and this has to work on both.
+  curl -fsSL "$REPO_TARBALL" \
+    | tar -xzf - -C "$CANARY_HOME" --strip-components=1 canary-main/phrases 2>/dev/null
 }
 
 # --- detect shell + rc file --------------------------------------------------
@@ -157,6 +176,7 @@ main() {
   if fetch "canary-statusline.sh" "$CANARY_HOME/canary-statusline.sh" 2>/dev/null; then
     chmod +x "$CANARY_HOME/canary-statusline.sh" 2>/dev/null || true
   fi
+  fetch_phrases || echo "canary: no phrase corpus installed — the bird will stay quiet"
   wire_statusline || true
 
   printf '\n ▗███▖\n▐ O ▌>   canary installed for %s\n\n' "$shell_name"

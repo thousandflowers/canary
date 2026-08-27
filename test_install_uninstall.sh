@@ -31,6 +31,7 @@ H=$(newhome); printf 'export PREEXISTING=1\n' > "$H/.bashrc"
 install_into "$H"
 [ -f "$H/.canary/canary.sh" ]            || { echo "FAIL [install-canary-sh]: not installed"; fails=$((fails+1)); }
 [ -f "$H/.canary/canary-statusline.sh" ] || { echo "FAIL [install-statusline]: not installed"; fails=$((fails+1)); }
+[ -f "$H/.canary/phrases/en/states/dead.txt" ] || { echo "FAIL [install-phrases]: corpus not installed"; fails=$((fails+1)); }
 assert_has "install-rc-line"  "$(cat "$H/.bashrc")" '.canary/canary.sh'
 assert_has "install-rc-keeps" "$(cat "$H/.bashrc")" 'export PREEXISTING=1'
 
@@ -38,6 +39,11 @@ assert_has "install-rc-keeps" "$(cat "$H/.bashrc")" 'export PREEXISTING=1'
 out=$(env HOME="$H" CANARY_NIGHT_MULT=100 CANARY_STATE_FILE="$H/.canary/st" \
       bash -c ". '$H/.canary/canary.sh'; trap - DEBUG; canary status" 2>&1)
 assert_has "install-runs" "$out" '▐ O ▌>'
+
+# and the installed statusline bird can actually reach the corpus and speak —
+# without this the phrase system ships inert and nothing notices
+out=$(env HOME="$H" COLUMNS=100 bash "$H/.canary/canary-statusline.sh" preview --state dead 2>&1)
+assert_has "install-phrases-speak" "$out" "the canary is quiet."
 
 # --- 2. install is idempotent: one source line, not two ----------------------
 install_into "$H"
