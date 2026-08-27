@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
 
-> ⚠️ Alpha - in active development. Not ready for daily use yet.
+> a toy, on purpose. it is tested (four suites, shellcheck, ubuntu + macOS + fish
+> on every push) and the curve is grounded in published fatigue research, but it
+> reads keystrokes, not you. treat it as a nudge, never as a measurement.
 
 a tiny pixel-art bird that lives in your shell prompt and slowly wilts the
 longer you grind. **for fun** - a nudge to step away, not a science.
