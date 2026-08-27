@@ -1,0 +1,109 @@
+# goreleaser builds the binaries, cuts the GitHub release, and bumps both
+# Homebrew taps. Before v1.0 all of that was done by hand, which is why the two
+# taps could — and did — sit on different versions.
+#
+# Triggered by pushing a tag: `git tag -a v1.0.0 -m ... && git push origin v1.0.0`.
+version: 2
+
+project_name: canary
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/canary
+    binary: canary
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      # -s -w strips the debug tables: nobody debugs a released canary from a
+      # core dump, and it takes about a third off the binary.
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  # install.sh downloads exactly this name. Changing the template breaks the
+  # curl install for everyone, silently, on the next release.
+  - name_template: "canary_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - README.md
+      - VOICE.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+# `brews` is deprecated in favour of `homebrew_casks`, and stays here on
+# purpose. A cask is macOS-only, and canary ships Linux builds; switching would
+# also mean deleting Formula/canary.rb from both taps by hand at the same
+# moment the cask lands, or `brew install thousandflowers/tap/canary` would go
+# on resolving the old shell formula and nobody would ever be upgraded. Move
+# when the deprecation actually bites, not before.
+brews:
+  # One tap, on purpose. canary also has a thousandflowers/homebrew-canary tap,
+  # bumped by hand until now, and the two drifted: pointing goreleaser at both
+  # makes it build two artifacts called canary.rb and warn that publishing them
+  # may fail. `brew install thousandflowers/tap/canary` is what the README says
+  # and what this bumps; the other tap should redirect here rather than be a
+  # second copy nobody remembers to update.
+  - repository:
+      owner: thousandflowers
+      name: homebrew-tap
+      token: "{{ .Env.TAP_PUSH_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/thousandflowers/canary
+    description: Pixel-art fatigue bird for your shell prompt and Claude Code's status line
+    license: MIT
+    commit_author:
+      name: goreleaser
+      email: noreply@github.com
+    caveats: |
+      canary is two birds from one binary: one above your shell prompt, one in
+      Claude Code's status line.
+
+      Wire your shell (zsh, bash or fish) by adding this to your rc file:
+
+        eval "$(canary init zsh)"          # fish: canary init fish | source
+
+      And the Claude Code status line:
+
+        canary settings install
+
+      Open a new shell, and restart Claude Code, to meet them. Tame with
+      CANARY_DISABLED, CANARY_MIN_SCORE (71 = only once it matters),
+      CANARY_SHOW_SCORE, CANARY_QUIET — see README.
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/canary version")
+
+      # The corpus is compiled into the binary. Asserting a file exists is not
+      # the same assertion, and the weaker one is what let v0.7.0 nearly ship
+      # with the phrase system inert.
+      assert_match "the canary is quiet.",
+                   shell_output("#{bin}/canary preview --state dead")
+
+      # Hermetic Claude Code mode: an empty transcript fixture, and every state
+      # file pointed at testpath so this never reads the *tester's* real
+      # ~/.canary/history — which would make the assertion depend on how tired
+      # the person running brew test happens to be.
+      transcript = testpath/"transcript.jsonl"
+      transcript.write("")
+      input = %Q({"cost":{"total_duration_ms":0},"transcript_path":"#{transcript}"})
+      cmd = "CANARY_HISTORY_FILE=#{testpath}/history CANARY_STATE_FILE=#{testpath}/state " \
+            "CANARY_PHRASE_STATE=#{testpath}/phrase-state #{bin}/canary statusline"
+      assert_match "fresh", pipe_output(cmd, input)
+
+      # And the prompt bird scores a session it has just been told about.
+      system bin/"canary", "record", "--", "git status"
+      assert_match "▐ O ▌>",
+                   shell_output("CANARY_NIGHT_MULT=100 #{bin}/canary status")

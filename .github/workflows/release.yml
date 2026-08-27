@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser builds the changelog from history; a shallow clone gives
+          # it one commit and a release note that says nothing.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: tests must pass before anything is published
+        run: go test ./...
+      - name: check the tap token exists
+        # goreleaser fails at the very END without it, after the release is
+        # already public — leaving the taps behind and the release note live.
+        # Fail here instead, before anything is published.
+        env:
+          TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
+        run: |
+          if [ -z "$TAP_PUSH_TOKEN" ]; then
+            echo "TAP_PUSH_TOKEN is not set: goreleaser cannot push to the Homebrew taps."
+            echo "Create a PAT with repo scope on thousandflowers/homebrew-tap and"
+            echo "thousandflowers/homebrew-canary, then add it as a repository secret."
+            exit 1
+          fi
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}

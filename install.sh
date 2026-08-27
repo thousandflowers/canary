@@ -1,73 +1,103 @@
 #!/usr/bin/env sh
-# canary installer — detects your shell, drops canary in ~/.canary, wires the rc.
+# canary installer — puts the binary somewhere runnable and wires your rc.
 # Idempotent: safe to run again. Curl-friendly.
 #
-#   sh install.sh            # install from a cloned repo
-#   curl -fsSL <raw>/install.sh | sh   # remote install (pulls files from REPO_RAW)
+#   sh install.sh                       # from a cloned repo (builds, if you have Go)
+#   curl -fsSL <raw>/install.sh | sh    # remote install (downloads the release)
+#
+# Homebrew is the cleaner path and does the first half of this for you:
+#   brew install thousandflowers/tap/canary && canary settings install
+#
+# What changed at v1.0: canary is one Go binary. There is no canary.sh to copy
+# into ~/.canary any more, no phrase corpus to install beside it (it is compiled
+# in), and no jq — the binary edits Claude Code's settings.json itself.
 
 set -eu
 
-CANARY_HOME="$HOME/.canary"
-REPO_RAW="https://raw.githubusercontent.com/thousandflowers/canary/main"
-REPO_TARBALL="https://codeload.github.com/thousandflowers/canary/tar.gz/refs/heads/main"
-# Marker for the login-shell chain line, so uninstall.sh can take back exactly
-# what we added and nothing else.
+REPO="thousandflowers/canary"
+CANARY_BIN_DIR="${CANARY_BIN_DIR:-$HOME/.local/bin}"
+CANARY_BIN="$CANARY_BIN_DIR/canary"
+
+# Markers, so uninstall.sh can take back exactly what we added and nothing else.
+CANARY_RC_MARK='# canary — fatigue bird'
 CANARY_CHAIN_MARK='# canary — let login shells read .bashrc'
 
 # where this script lives (empty when piped through curl)
 SCRIPT_DIR=""
 case "${0:-}" in
   # `|| SCRIPT_DIR=""` rather than `&& pwd || true`: the latter is SC2015 and
-  # reads like if-then-else when it isn't. Failing to resolve is fine — we just
-  # fall back to fetching over the network.
+  # reads like if-then-else when it isn't.
   */*) SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd) || SCRIPT_DIR="" ;;
 esac
 
-# --- fetch a file: prefer local sibling, else curl from the repo -------------
-fetch() {
-  name=$1
-  dest=$2
-  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/$name" ]; then
-    cp "$SCRIPT_DIR/$name" "$dest"
-  elif command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$REPO_RAW/$name" -o "$dest"
-  else
-    echo "canary: cannot find $name locally and curl is missing." >&2
-    return 1
-  fi
+# --- os_arch, in the spelling the release assets use -------------------------
+platform() {
+  os=$(uname -s)
+  arch=$(uname -m)
+  case "$os" in
+    Darwin) os=darwin ;;
+    Linux)  os=linux ;;
+    *) echo "canary: no release build for $os — install Go and run: go install github.com/$REPO/cmd/canary@latest" >&2; return 1 ;;
+  esac
+  case "$arch" in
+    arm64|aarch64) arch=arm64 ;;
+    x86_64|amd64)  arch=amd64 ;;
+    *) echo "canary: no release build for $arch — install Go and run: go install github.com/$REPO/cmd/canary@latest" >&2; return 1 ;;
+  esac
+  echo "${os}_${arch}"
 }
 
-# --- the phrase corpus the statusline bird speaks from -----------------------
-# Copied whole rather than fetched file by file: it is twenty-odd small files and
-# a hand-maintained manifest would rot the first time somebody adds a category.
-# Local copy first (brew, or a git clone), tarball only when piped through curl.
-# Optional: with no corpus the bird simply never speaks, everything else works.
-fetch_phrases() {
-  mkdir -p "$CANARY_HOME/phrases"
-  if [ -n "$SCRIPT_DIR" ] && [ -d "$SCRIPT_DIR/phrases" ]; then
-    cp -R "$SCRIPT_DIR/phrases/." "$CANARY_HOME/phrases/"
-    return $?
+# --- get a canary binary into $CANARY_BIN ------------------------------------
+# Source first when we are in a clone with Go available: it is faster than the
+# network and it installs exactly the tree you are looking at.
+install_binary() {
+  mkdir -p "$CANARY_BIN_DIR"
+
+  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/go.mod" ] && command -v go >/dev/null 2>&1; then
+    echo "canary: building from source"
+    ( cd "$SCRIPT_DIR" && go build -o "$CANARY_BIN" ./cmd/canary )
+    return 0
   fi
-  command -v curl >/dev/null 2>&1 || return 1
-  # an exact member path, not a glob: BSD tar and GNU tar disagree about
-  # --wildcards, and this has to work on both.
-  curl -fsSL "$REPO_TARBALL" \
-    | tar -xzf - -C "$CANARY_HOME" --strip-components=1 canary-main/phrases 2>/dev/null
+  if [ -n "$SCRIPT_DIR" ] && [ -x "$SCRIPT_DIR/canary" ] && [ ! -d "$SCRIPT_DIR/canary" ]; then
+    cp "$SCRIPT_DIR/canary" "$CANARY_BIN"
+    chmod +x "$CANARY_BIN"
+    return 0
+  fi
+
+  command -v curl >/dev/null 2>&1 || {
+    echo "canary: need curl to download a release (or Go, to build from source)" >&2
+    return 1
+  }
+  plat=$(platform) || return 1
+  url="https://github.com/$REPO/releases/latest/download/canary_${plat}.tar.gz"
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/canary.XXXXXX")
+  echo "canary: downloading $plat"
+  if curl -fsSL "$url" | tar -xzf - -C "$tmp" 2>/dev/null && [ -f "$tmp/canary" ]; then
+    cp "$tmp/canary" "$CANARY_BIN"
+    chmod +x "$CANARY_BIN"
+    rm -rf "$tmp"
+    return 0
+  fi
+  rm -rf "$tmp"
+  echo "canary: could not fetch $url" >&2
+  return 1
 }
 
 # --- detect shell + rc file --------------------------------------------------
 detect_rc() {
   shell_name=$(basename "${SHELL:-/bin/sh}")
   case "$shell_name" in
-    zsh)  echo "zsh|$HOME/.zshrc|canary.sh" ;;
+    zsh)  echo "zsh|$HOME/.zshrc" ;;
     # Always ~/.bashrc, never .bash_profile. Interactive NON-login bash — what
     # a Linux terminal opens — reads only .bashrc, so wiring .bash_profile
     # there installs a bird that never loads. macOS terminals open LOGIN
     # shells, which read .bash_profile and never .bashrc unless it is sourced
     # from there, so main() also makes the login file chain to .bashrc.
-    bash) echo "bash|$HOME/.bashrc|canary.sh" ;;
-    fish) echo "fish|$HOME/.config/fish/config.fish|canary.fish" ;;
-    *)    echo "sh|$HOME/.profile|canary.sh" ;;
+    bash) echo "bash|$HOME/.bashrc" ;;
+    fish) echo "fish|$HOME/.config/fish/config.fish" ;;
+    # No hook for anything else, but the rc still gets the PATH line so the
+    # `canary` command works; the bird just will not perch by itself.
+    *)    echo "sh|$HOME/.profile" ;;
   esac
 }
 
@@ -94,7 +124,7 @@ ensure_bash_chain() {
   echo "canary: created $HOME/.bash_profile so login shells read ~/.bashrc"
 }
 
-# --- idempotent source line --------------------------------------------------
+# --- idempotent rc line ------------------------------------------------------
 ensure_line() {
   rc=$1
   line=$2
@@ -103,84 +133,53 @@ ensure_line() {
   if grep -qF "$line" "$rc" 2>/dev/null; then
     echo "canary: rc already wired ($rc)"
   else
-    printf '\n# canary — fatigue bird\n%s\n' "$line" >> "$rc"
-    echo "canary: added source line to $rc"
+    printf '\n%s\n%s\n' "$CANARY_RC_MARK" "$line" >> "$rc"
+    echo "canary: added the hook to $rc"
   fi
 }
 
-# --- wire the bird into Claude Code's statusLine (best-effort, non-destructive)
-# Appends `; bash canary-statusline.sh` to any existing statusLine command (e.g.
-# caveman's) so both render — Claude Code allows only one statusLine command, and
-# caveman prints [CAVEMAN] with no trailing newline, so the bird lands beside it.
-wire_statusline() {
-  cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-  settings="$cfg/settings.json"
-  sl="$CANARY_HOME/canary-statusline.sh"
-  add="bash \"$sl\""
-
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "canary: jq not found — skipping statusline. add manually:"
-    echo "  \"statusLine\": { \"type\": \"command\", \"command\": \"<existing>; $add\" }"
-    return 0
-  fi
-  [ -d "$cfg" ] || { echo "canary: no Claude Code config at $cfg — skipping statusline"; return 0; }
-  [ -f "$settings" ] || echo '{}' > "$settings"
-
-  # JSONC tolerance: if jq can't parse it (comments?), don't risk corrupting it
-  if ! jq empty "$settings" >/dev/null 2>&1; then
-    echo "canary: $settings isn't plain JSON (comments?) — add manually:"
-    echo "  append '; $add' to your statusLine.command"
-    return 0
-  fi
-
-  cur=$(jq -r '.statusLine.command // ""' "$settings")
-  case "$cur" in
-    *canary-statusline*) echo "canary: statusline already wired"; return 0 ;;
+# --- $CANARY_BIN_DIR on PATH, only when it is not already --------------------
+# Homebrew installs somewhere already on PATH, so this whole step is for the
+# curl path. The hook itself calls the binary by absolute path and does not
+# need it; this is so you can type `canary`.
+ensure_path() {
+  shell_name=$1
+  rc=$2
+  case ":${PATH}:" in
+    *":$CANARY_BIN_DIR:"*) return 0 ;;
   esac
-  if [ -n "$cur" ]; then
-    newcmd="$cur; $add"        # keep caveman (or whatever exists), append the bird
+  if [ "$shell_name" = fish ]; then
+    ensure_line "$rc" "fish_add_path $CANARY_BIN_DIR"
   else
-    newcmd="$add"
-  fi
-
-  tmp=$(mktemp 2>/dev/null || echo "$settings.canary.tmp")
-  if jq --arg c "$newcmd" '.statusLine = {type:"command", command:$c}' "$settings" > "$tmp"; then
-    cp "$settings" "$settings.canary.bak"
-    mv "$tmp" "$settings"
-    echo "canary: statusline wired into $settings (backup: $settings.canary.bak)"
-  else
-    rm -f "$tmp"
-    echo "canary: could not update $settings — add '; $add' to statusLine.command manually"
+    ensure_line "$rc" "export PATH=\"$CANARY_BIN_DIR:\$PATH\""
   fi
 }
 
 main() {
   info=$(detect_rc)
   shell_name=${info%%|*}
-  rest=${info#*|}
-  rc=${rest%%|*}
-  asset=${rest##*|}
+  rc=${info#*|}
 
-  mkdir -p "$CANARY_HOME"
-  fetch "$asset" "$CANARY_HOME/$asset"
+  install_binary
 
-  if [ "$shell_name" = fish ]; then
-    line="test -f $CANARY_HOME/canary.fish; and source $CANARY_HOME/canary.fish"
+  case "$shell_name" in
+    fish) hook="\"$CANARY_BIN\" init fish | source" ;;
+    zsh|bash) hook="eval \"\$(\"$CANARY_BIN\" init $shell_name)\"" ;;
+    *) hook="" ;;
+  esac
+  ensure_path "$shell_name" "$rc"
+  if [ -n "$hook" ]; then
+    ensure_line "$rc" "$hook"
+    [ "$shell_name" = bash ] && ensure_bash_chain
   else
-    line="[ -f \"$CANARY_HOME/$asset\" ] && . \"$CANARY_HOME/$asset\""
+    echo "canary: no prompt hook for $shell_name — \`canary\` still works by hand"
   fi
-  ensure_line "$rc" "$line"
-  [ "$shell_name" = bash ] && ensure_bash_chain
 
-  # Claude Code statusline (optional; needs jq + a Claude Code config dir)
-  if fetch "canary-statusline.sh" "$CANARY_HOME/canary-statusline.sh" 2>/dev/null; then
-    chmod +x "$CANARY_HOME/canary-statusline.sh" 2>/dev/null || true
-  fi
-  fetch_phrases || echo "canary: no phrase corpus installed — the bird will stay quiet"
-  wire_statusline || true
+  # Claude Code's status line. No jq: the binary edits the JSON itself.
+  "$CANARY_BIN" settings install || true
 
   printf '\n ▗███▖\n▐ O ▌>   canary installed for %s\n\n' "$shell_name"
-  echo "open a new shell (or: source $rc) to meet your bird."
+  echo "open a new shell (or: . $rc) to meet your bird."
 }
 
 main "$@"
