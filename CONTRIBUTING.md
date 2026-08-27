@@ -12,11 +12,17 @@
 3. See it drawn before you open the PR:
 
    ```sh
-   canary preview --state worn --note falling
-   canary preview --state fresh --phrase "some candidate line"
+   go run ./cmd/canary preview --state worn --note falling
+   go run ./cmd/canary preview --state fresh --phrase "some candidate line"
    ```
-4. Run `bash test_canary_phrases.sh`. It checks the corpus against the mechanical
-   parts of the VOICE.md rules.
+
+   Editing the files in `phrases/` is enough: `go run` rebuilds, so the copy
+   compiled into the binary is the tree you just edited. An *installed* binary
+   carries the corpus it shipped with — point that one at your checkout with
+   `CANARY_PHRASE_DIR=$PWD/phrases`.
+4. Run `go test ./...`. The corpus linter in `embed_test.go` checks your line
+   against the mechanical parts of the VOICE.md rules, so review is left with
+   the only question that needs a person: is it any good.
 
 Open the PR against `main` with the line quoted in the description.
 
@@ -46,17 +52,21 @@ unnoticed; a wrong fact arrives as an issue within a week, and it is right.
 
 ## code
 
-Run the four suites before opening a PR — no framework, no dependencies:
+Run the suites before opening a PR:
 
 ```sh
-bash test_canary_sh.sh
-bash test_canary_statusline.sh
-bash test_canary_phrases.sh
-bash test_install_uninstall.sh
-fish test_canary_fish.fish
+go test ./...                     # everything, including the corpus linter
+bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
 ```
 
-`shellcheck` runs in CI, pinned to 0.10.0. Keep the runtime footprint as it is:
-pure shell, no `jq` outside `install.sh`, no network, no API calls. The status
-line debounces at 300ms and cancels in-flight scripts, so anything slow simply
-never renders.
+A phrase PR needs nothing but `go test ./...`: the corpus checks live in
+`embed_test.go` — width in cells, no capitals, no nagging verbs, `dead.txt`
+pinned at one line, no duplicates, and no file named after a band that does not
+exist. That is VOICE.md §6's linter, run as a test rather than as a subcommand.
+
+`shellcheck` runs in CI, pinned to 0.10.0, over the installer — the only shell
+left, because a `curl | sh` bootstrap cannot be written in the language it is
+bootstrapping. Keep the runtime footprint as it is: one binary, one dependency
+(`runewidth`), no network, no API calls. The status line is redrawn several
+times a second and Claude Code cancels it mid-run, so anything slow simply never
+renders.

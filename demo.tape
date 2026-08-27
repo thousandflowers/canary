@@ -1,6 +1,10 @@
 # canary demo tape - render with:  vhs demo.tape
 # produces assets/demo.gif (the bird wilting as a "session" wears on)
 # https://github.com/charmbracelet/vhs
+#
+# The session is fast-forwarded by writing the state file the bird reads, not by
+# waiting four hours. CANARY_STATE_FILE points at a throwaway path on purpose:
+# recording the demo must not reset the recorder's own bird.
 
 Output assets/demo.gif
 
@@ -11,9 +15,15 @@ Set Height 360
 Set Padding 24
 Set TypingSpeed 60ms
 
-# load canary in a clean prompt, quietly
+# build, load the hook, and define the fast-forward helper — all off camera
 Hide
-Type "source ./canary.sh; export CANARY_SHOW_SCORE=1; PS1='$ '"
+Type "go build -o /tmp/canary ./cmd/canary"
+Enter
+Type "export CANARY_STATE_FILE=$(mktemp) CANARY_SHOW_SCORE=1 CANARY_NIGHT_MULT=100 PS1='$ '"
+Enter
+Type "fastforward() { printf 'prompt_count=%s\nlen_sum=%s\nactive_seconds=%s\nlast_active=0\n' \"$2\" \"$((20 * $2))\" \"$((60 * $1))\" > $CANARY_STATE_FILE; }"
+Enter
+Type 'eval "$(/tmp/canary init bash)"'
 Enter
 Type "clear"
 Enter
@@ -24,27 +34,27 @@ Type "echo 'just sat down'"
 Enter
 Sleep 1500ms
 
-# fast-forward ~60 active min -> chirpy
-Type "CANARY_ACTIVE_SECONDS=$((60*60)); CANARY_PROMPT_COUNT=25"
+# ~60 active minutes, 25 commands -> chirpy
+Type "fastforward 60 25"
 Enter
 Sleep 1500ms
 
-# ~120 active min, 45 commands -> tired
-Type "CANARY_ACTIVE_SECONDS=$((120*60)); CANARY_PROMPT_COUNT=45"
+# ~120 minutes, 45 commands -> tired
+Type "fastforward 120 45"
 Enter
 Sleep 1500ms
 
-# ~180 active min, 60 commands -> worn
-Type "CANARY_ACTIVE_SECONDS=$((180*60)); CANARY_PROMPT_COUNT=60"
+# ~180 minutes, 60 commands -> worn
+Type "fastforward 180 60"
 Enter
 Sleep 1500ms
 
-# ~240 active min, 90 commands -> dead
-Type "CANARY_ACTIVE_SECONDS=$((240*60)); CANARY_PROMPT_COUNT=90"
+# ~240 minutes, 90 commands -> dead
+Type "fastforward 240 90"
 Enter
 Sleep 2500ms
 
 # fresh again
-Type "CANARY_RESET=1"
+Type "/tmp/canary reset"
 Enter
 Sleep 2000ms
