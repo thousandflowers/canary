@@ -48,6 +48,8 @@ jobs:
         run: bash test_canary_statusline.sh
       - name: prompt bird
         run: bash test_canary_sh.sh
+      - name: phrases
+        run: bash test_canary_phrases.sh
       - name: install / uninstall
         run: bash test_install_uninstall.sh
       - name: zsh smoke
