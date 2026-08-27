@@ -10,6 +10,40 @@ permissions:
   contents: read
 
 jobs:
+  go:
+    name: go (${{ matrix.os }})
+    # Both, always: the bird runs on a Mac laptop and a Linux server, and the
+    # only bugs worth catching here are the ones that differ between them.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+      - name: vet
+        run: go vet ./...
+      - name: test
+        # -race on Linux only: the statusline writes state files that Claude
+        # Code can run concurrently, and the race detector is the cheapest way
+        # to keep that honest. It roughly doubles the run, so once is enough.
+        run: |
+          if [ "${{ matrix.os }}" = ubuntu-latest ]; then
+            go test -race ./...
+          else
+            go test ./...
+          fi
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -26,15 +60,15 @@ jobs:
           curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SC_VERSION}/shellcheck-${SC_VERSION}.linux.x86_64.tar.xz" \
             | sudo tar -xJ --strip-components=1 -C /usr/local/bin "shellcheck-${SC_VERSION}/shellcheck"
           shellcheck --version
-      - name: lint every shell script
-        # -x follows sourced files. canary.sh carries targeted `shellcheck
-        # disable=` comments for the bash-only branch it guards with $BASH_VERSION.
-        run: shellcheck -x canary.sh canary-statusline.sh install.sh uninstall.sh test_*.sh
+      - name: lint the scripts that are left
+        # The installer is the only shell canary still ships: a `curl | sh`
+        # bootstrap cannot be written in the language it is bootstrapping.
+        run: shellcheck -x install.sh uninstall.sh test_install_uninstall.sh
 
-  test:
-    name: test (${{ matrix.os }})
-    # macOS ships bash 3.2, Ubuntu ships bash 5.x. Both must pass — the test
-    # harness has already been bitten by 3.2's empty-array-under-set-u rule.
+  shells:
+    name: shells (${{ matrix.os }})
+    # macOS ships bash 3.2, Ubuntu ships bash 5.x. The hooks the binary prints
+    # have to work in both, and only a real shell can prove that.
     strategy:
       fail-fast: false
       matrix:
@@ -42,33 +76,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: bash version
         run: bash --version | head -1
-      - name: statusline bird
-        run: bash test_canary_statusline.sh
-      - name: prompt bird
-        run: bash test_canary_sh.sh
-      - name: phrases
-        run: bash test_canary_phrases.sh
       - name: install / uninstall
         run: bash test_install_uninstall.sh
-      - name: zsh smoke
-        # canary.sh's primary audience is zsh; make sure it at least loads,
-        # scores and renders there. Ubuntu has no zsh preinstalled.
+      - name: build
+        run: go build -o /tmp/canary ./cmd/canary
+      - name: bash hook draws the bird
+        run: |
+          rc=$(mktemp)
+          /tmp/canary init bash > "$rc"
+          out=$(printf 'echo hi\nexit\n' | env HOME="$(mktemp -d)" bash --rcfile "$rc" -i 2>&1)
+          printf '%s\n' "$out"
+          case "$out" in
+            *'▐ O ▌>'*) echo "bash ok" ;;
+            *) echo "bash hook did not draw"; exit 1 ;;
+          esac
+      - name: zsh hook draws the bird
         run: |
           if ! command -v zsh >/dev/null 2>&1; then
             sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends zsh
           fi
-          out=$(zsh -c '
-            export CANARY_NIGHT_MULT=100 CANARY_STATE_FILE=$(mktemp -d)/s
-            source ./canary.sh
-            _canary_record "git status"
-            canary status
-          ')
+          zdot=$(mktemp -d)
+          /tmp/canary init zsh > "$zdot/.zshrc"
+          echo 'PS1="%% "' >> "$zdot/.zshrc"
+          out=$(printf 'echo hi\nexit\n' | env HOME="$(mktemp -d)" ZDOTDIR="$zdot" zsh -i 2>&1)
           printf '%s\n' "$out"
           case "$out" in
             *'▐ O ▌>'*) echo "zsh ok" ;;
-            *) echo "zsh smoke failed"; exit 1 ;;
+            *) echo "zsh hook did not draw"; exit 1 ;;
           esac
 
   fish:
@@ -76,11 +116,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: install fish
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends fish
       - name: fish version
         run: fish --version
+      - name: build
+        run: go build -o /tmp/canary ./cmd/canary
       - name: syntax check
-        run: fish --no-execute canary.fish
-      - name: fish bird
-        run: fish test_canary_fish.fish
+        run: /tmp/canary init fish > /tmp/hook.fish && fish --no-execute /tmp/hook.fish
+      - name: fish hook draws the bird
+        # `-i` matters: the hook is guarded on `status is-interactive`, and fish
+        # run with -c alone is not.
+        run: |
+          out=$(env HOME="$(mktemp -d)" fish --no-config -i -c "source /tmp/hook.fish; emit fish_preexec 'git status'; fish_prompt" 2>&1)
+          printf '%s\n' "$out"
+          case "$out" in
+            *'▐ O ▌>'*) echo "fish ok" ;;
+            *) echo "fish hook did not draw"; exit 1 ;;
+          esac
