@@ -8,7 +8,8 @@
 
 a tiny pixel-art bird that lives in your shell prompt and slowly wilts the
 longer you grind. **for fun** - a nudge to step away, not a science.
-no color. no internet. no dependency. just UTF-8 block art + your shell.
+no color. no internet. no runtime dependency. one small binary, UTF-8 block
+art, and your shell.
 
 ## bird
 ```
@@ -63,10 +64,43 @@ sight-unseen.) clone, inspect, then install locally:
 ```sh
 git clone https://github.com/thousandflowers/canary
 cd canary
-less install.sh canary.sh      # look first
-sh install.sh
+less install.sh              # look first
+sh install.sh                # builds from source if you have Go
 ```
-then open a new shell. the bird appears above your prompt.
+**already have Go?**
+```sh
+go install github.com/thousandflowers/canary/cmd/canary@latest
+```
+
+then wire your shell — the installer does this for you, and this is what it
+adds:
+```sh
+eval "$(canary init zsh)"          # ~/.zshrc
+eval "$(canary init bash)"         # ~/.bashrc
+canary init fish | source          # ~/.config/fish/config.fish
+canary settings install            # Claude Code's status line
+```
+open a new shell. the bird appears above your prompt.
+
+<details>
+<summary>upgrading from 0.x</summary>
+
+0.x was three shell scripts installed into `~/.canary`. v1.0 is one binary and
+nothing else: run `install.sh` again (it replaces the rc line) or, if you want
+to be thorough, `sh uninstall.sh` first — it recognises the old source line and
+takes it back.
+
+Two things changed on purpose:
+
+- **`canary on` / `canary off` are gone.** A binary cannot change the
+  environment of the shell that ran it. `CANARY_DISABLED=1` still works, and
+  still silences both birds.
+- **the bird is now per-person, not per-terminal.** Three windows used to mean
+  three independent birds, while the file the status line read was overwritten
+  by whichever of them ran a command last. One state file, shared. Idle gaps
+  still do not count, so a terminal you are not typing in ages nothing.
+
+</details>
 
 ## tame the bird
 ```sh
@@ -191,7 +225,7 @@ canary also perches next to caveman's `[CAVEMAN]` badge in Claude Code's status 
           ▐ - ▌>
 ```
 Here the bird watches your **coding session**, not your shell. Claude Code pipes its
-session JSON to `canary-statusline.sh` on every refresh; the script reads
+session JSON to `canary statusline` on every refresh; it reads
 `cost.total_duration_ms` for minutes and walks the session transcript for richer
 signals than the shell bird can see:
 
@@ -217,14 +251,19 @@ pruned to 10) means the bird doesn't reset to fresh just because you opened a ne
 session - yesterday's peak carries over, halving each day, and fades after ~4–5 days
 of rest. Two+ consecutive days past the limit add a `✕ N nights past your limit` line.
 
-`install.sh` wires this automatically (needs `jq`): it drops `canary-statusline.sh`
-into `~/.canary/` and merges a `statusLine` command into
-`$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`). If a status line already
-exists (e.g. caveman's), canary is **appended** to it, not replacing it - Claude
-Code allows only one status line command, and caveman emits no trailing newline so
-the bird lands right beside the badge. A backup is saved to `settings.json.canary.bak`.
+`canary settings install` wires this — `install.sh` runs it for you. It merges a
+`statusLine` command into `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`).
+If a status line already exists (e.g. caveman's), canary is **appended** to it, not
+replacing it - Claude Code allows only one status line command, and caveman emits no
+trailing newline so the bird lands right beside the badge. A backup is saved to
+`settings.json.canary.bak`, a symlinked `settings.json` is written *through* rather
+than replaced, and a file with comments in it is left alone with a message instead
+of being silently reformatted.
 
-`sh uninstall.sh` removes only canary's segment, leaving the rest intact.
+`canary settings remove` takes back only canary's segment, leaving the rest intact.
+`sh uninstall.sh` does that and the rc lines and `~/.canary`.
+
+No `jq`. The binary speaks JSON.
 
 ### what the bird says
 On a state **transition** — and only then — the bird may say one line, in the slot
@@ -247,7 +286,8 @@ rules, and the whole corpus are in [VOICE.md](VOICE.md); how to add a line is in
 CANARY_QUIET=1           # bird and note glyph only, no phrases
 CANARY_ASCII=1           # ASCII substitutes for ⌐ and ♪
 CANARY_RESERVE_COLS=0    # cells to book on the bird's row for whatever shares it
-CANARY_PHRASE_DIR=...    # corpus root (default ~/.canary/phrases, then ./phrases)
+CANARY_PHRASE_DIR=...    # corpus root, overriding the copy inside the binary
+                         # (~/.canary/phrases is picked up automatically if it exists)
 ```
 
 See a line drawn before you open a PR:
@@ -257,8 +297,9 @@ canary preview --state worn --note falling
 canary preview --state fresh --phrase "some candidate line"
 ```
 
-`jq` is currently required by `install.sh` to wire the status line. It goes away
-when the loader moves to Go and the corpus is embedded in the binary.
+The corpus is compiled into the binary with `go:embed`, so the bird cannot lose
+its voice in transit — the packaging has no chance to forget it. Point
+`CANARY_PHRASE_DIR` at a checkout to iterate on lines without rebuilding.
 
 ## uninstall
 ```sh
@@ -267,23 +308,34 @@ sh uninstall.sh
 bird gone. rc cleaned. `~/.canary` removed.
 
 ## shell
-zsh, bash, fish. UTF-8 terminal required.
+zsh, bash, fish. UTF-8 terminal required. macOS and Linux, amd64 and arm64.
 
 ## hacking
-no build step, no dependencies. the tests are plain asserts - run them directly:
+Go 1.24+, one dependency (`runewidth`, for cell widths).
 ```sh
-bash test_canary_sh.sh            # the shell-prompt bird
-bash test_canary_statusline.sh    # the Claude Code statusline bird
-bash test_install_uninstall.sh    # installer, in a throwaway $HOME
-fish test_canary_fish.fish        # the fish bird (needs fish)
-shellcheck -x canary.sh canary-statusline.sh install.sh uninstall.sh test_*.sh
+go test ./...                     # everything, including the corpus linter
+go build -o canary ./cmd/canary
+bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
+shellcheck -x install.sh uninstall.sh test_install_uninstall.sh
 ```
-CI runs all of it on ubuntu + macOS, plus a zsh smoke test. macOS still ships
-bash 3.2, so the suites stay 3.2-compatible.
+CI runs all of it on ubuntu + macOS, and drives the printed hook in a real zsh,
+bash and fish to check the bird actually draws above a prompt.
 
-the three birds must agree: `canary.sh`, `canary.fish` and
-`canary-statusline.sh` share one score formula and one state-file format, and
-the suites assert that parity rather than each implementation in isolation.
+Where things live:
+
+| | |
+|---|---|
+| `internal/fatigue` | the score: time curve, circadian shape, bands, the dead-bird demotion |
+| `internal/history` | daily peaks, multi-day debt, the night streak |
+| `internal/session` | signals, from Claude Code's transcript or the shell state file |
+| `internal/state`   | the shell-prompt bird's own counters |
+| `internal/phrase`  | what the bird says, and when it says nothing |
+| `internal/render`  | the art, the stat row, and fitting a line to the cells left |
+| `cmd/canary`       | the subcommands, and the shell hooks it prints |
+
+`internal/fatigue/parity_test.go` runs the original shell arithmetic in bash and
+diffs it against the Go, every minute from 0 to 1500. The shell implementation
+is gone; its numbers are still the specification.
 
 ## roadmap
 Where the bird is going. Shipped is shipped; the rest is intent, not a promise.
@@ -291,13 +343,14 @@ Where the bird is going. Shipped is shipped; the rest is intent, not a promise.
 | | | |
 |---|---|---|
 | **v0.6** | released | five bands, circadian curve, multi-day debt, shell + Claude Code statusline |
-| **v0.7** | *this branch* | the bird speaks — `phrases/en/**`, transition-gated encounters, health-gated rarity, `canary preview` |
-| **v0.8** | next | `canary lint` in CI so a phrase PR is a three-second yes; true shuffle without replacement; triggers detected in code (`no-tests`, `uncommitted`, `same-file`, `compacted`) |
-| **v0.9** | later | notes that move during a real break, and only then; `mine/` untranslated lines; `ephemeral/` quarantined by year |
-| **v1.0** | eventually | one Go binary with the corpus in `go:embed` — no `jq`, no shell, correct cell widths via `runewidth` |
+| **v0.7** | released | the bird speaks — `phrases/en/**`, transition-gated encounters, health-gated rarity, `canary preview` |
+| **v1.0** | **this release** | one Go binary with the corpus in `go:embed` — no `jq`, no shell, correct cell widths via `runewidth`; the corpus linter runs in CI; one state file per person instead of one per terminal |
+| next | — | true shuffle without replacement; triggers detected in code (`no-tests`, `uncommitted`, `same-file`, `compacted`); notes that move during a real break, and only then; `mine/` untranslated lines; `ephemeral/` quarantined by year |
 
-The design these phases implement is written down in [VOICE.md](VOICE.md), including
-the parts not built yet. Two rules there are load-bearing and will not be traded
+1.0 does not mean finished. It means the shape stopped moving: one binary, one
+score, one state format, and a corpus anyone can add a line to without reading
+Go. The design the phrases implement is written down in [VOICE.md](VOICE.md),
+including the parts not built yet. Two rules there are load-bearing and will not be traded
 away: the rarest lines are gated on **recovering, never on hours logged**, and there
 is no counter, no dex, no "12/40 seen" — a collection UI turns a tool about fatigue
 into something that pays you to keep working.

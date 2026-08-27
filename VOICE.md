@@ -190,9 +190,16 @@ people who do take a screenshot.
 
 ## 6. Linter
 
-Runs in CI and as `canary lint`, same code. It exists so you can say yes
-to a PR in three seconds without arguing about tone. Without it you stop
-merging after twenty PRs and the project quietly closes.
+Runs in CI as a Go test (`embed_test.go`) over the embedded corpus — the
+checks matter, a subcommand to run them by hand does not, and `go test
+./...` is already what a contributor runs. It exists so you can say yes to a
+PR in three seconds without arguing about tone. Without it you stop merging
+after twenty PRs and the project quietly closes.
+
+Implemented today: width in cells, no leading capital, no emoji, the
+blocklist, `you` banned in `lore/`, exact duplicates across the tree,
+`dead.txt` pinned at one line, and filenames that name a real band and note.
+Still to do: near-duplicates (Levenshtein), LTR-only, `{slot}` fallbacks.
 
 - max width in **cells** (`runewidth`), per tier — line 2 allows more
 - blocklist: `should`, `must`, `you need`, `take a break`, `remember to`, `!`
