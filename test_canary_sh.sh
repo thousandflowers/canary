@@ -63,10 +63,36 @@ case "$(run -- '_canary_render 90 show')" in
   *CANARY_RESET=1*) echo "FAIL [worn-no-nag]: worn should not nag"; fails=$((fails+1));;
 esac
 
-# --- 2. score formula: min/3 + count/2 + avglen/10 ---------------------------
-# 3600s active = 60min -> 20 ; 40 prompts -> 20 ; avg len 50 -> 5 ; total 45
+# --- 2. score formula: time_points(min) + count/2 + avglen/10 ----------------
+# 3600s active = 60min -> 26 ; 40 prompts -> 20 ; avg len 50 -> 5 ; total 51
 out=$(run CANARY_ACTIVE_SECONDS=3600 CANARY_PROMPT_COUNT=40 CANARY_LEN_SUM=2000 -- '_canary_score')
-assert_eq "score-formula" "$out" "45"
+assert_eq "score-formula" "$out" "51"
+
+# the time curve is concave and front-loaded: half the vigilance decrement
+# lands in the first ~15 min, costs steepen past ~60 min, then it flattens.
+# These are the reference points documented in canary.sh.
+while read -r mins want; do
+  assert_eq "time-curve-${mins}m" "$(run -- "_canary_time_points $mins")" "$want"
+done <<'CURVE'
+0 0
+15 7
+30 14
+60 26
+120 43
+180 55
+300 72
+480 86
+720 97
+CURVE
+
+# concave means each successive hour adds less than the one before it
+out=$(run -- 'a=$(_canary_time_points 60); b=$(_canary_time_points 120); c=$(_canary_time_points 180); [ $((b-a)) -lt $a ] && [ $((c-b)) -lt $((b-a)) ] && echo concave || echo LINEAR')
+assert_eq "time-curve-concave" "$out" "concave"
+
+# ...and it never saturates early: 5h must still be below the cap, or the dead
+# bird becomes wallpaper on any long day (the flaw in the old linear min/3).
+out=$(run -- '[ "$(_canary_time_points 300)" -lt 100 ] && echo below || echo PINNED')
+assert_eq "time-curve-no-early-cap" "$out" "below"
 
 # score is clamped to 100, never above
 out=$(run CANARY_ACTIVE_SECONDS=999999 CANARY_PROMPT_COUNT=9999 -- '_canary_score')
@@ -101,13 +127,43 @@ assert_eq "active-gap-accrued" "$out" "600"
 out=$(run -- '_canary_record ""; echo $CANARY_PROMPT_COUNT')
 assert_eq "empty-not-counted" "$out" "0"
 
-# --- 6. circadian penalty ----------------------------------------------------
-# force "night" by making the whole clock fall inside the window
-out=$(run CANARY_ACTIVE_SECONDS=3600 CANARY_NIGHT_MULT=200 CANARY_NIGHT_START=0 CANARY_NIGHT_END=24 -- '_canary_score')
-assert_eq "night-penalty" "$out" "40"     # 20 * 200/100
-# ...and off when the window excludes every hour
-out=$(run CANARY_ACTIVE_SECONDS=3600 CANARY_NIGHT_MULT=200 CANARY_NIGHT_START=99 CANARY_NIGHT_END=0 -- '_canary_score')
-assert_eq "night-off" "$out" "20"
+# --- 6. time of day ----------------------------------------------------------
+# The old flat "penalty from 22:00 to 07:00" is gone. The curve now follows the
+# circadian literature: nadir 02:00-06:00 (deepest 02:00-04:00), a post-lunch
+# dip 13:00-16:00, and nothing added 17:00-21:00 — the evening wake maintenance
+# zone, where alertness is genuinely high and the old rule was penalising you.
+while read -r hour want; do
+  assert_eq "circadian-${hour}h" "$(run -- "_canary_circadian_excess $hour")" "$want"
+done <<'HOURS'
+0 25
+1 25
+2 50
+3 50
+4 50
+5 40
+6 40
+7 15
+9 0
+12 0
+13 15
+15 15
+16 5
+20 0
+21 0
+22 5
+23 15
+HOURS
+
+# the trough must be the maximum, and the morning peak and evening wake
+# maintenance zone must both be free
+out=$(run -- 'mx=0; for h in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23; do v=$(_canary_circadian_excess $h); [ "$v" -gt "$mx" ] && mx=$v; done; echo "$mx/$(_canary_circadian_excess 3)/$(_canary_circadian_excess 10)/$(_canary_circadian_excess 20)"')
+assert_eq "circadian-shape" "$out" "50/50/0/0"
+
+# CANARY_NIGHT_MULT=100 switches the whole time-of-day adjustment off, at any hour
+assert_eq "circadian-disabled" "$(run CANARY_ACTIVE_SECONDS=3600 CANARY_NIGHT_MULT=100 -- '_canary_score')" "26"
+# ...and a bigger multiplier can only ever raise the score, never lower it
+out=$(run CANARY_ACTIVE_SECONDS=3600 CANARY_NIGHT_MULT=150 -- '[ "$(_canary_score)" -ge 26 ] && echo ge || echo LOWER')
+assert_eq "circadian-monotone" "$out" "ge"
 
 # --- 7. quiet threshold + disabled -------------------------------------------
 assert_empty "min-score-quiet" "$(run CANARY_MIN_SCORE=50 -- '_canary_precmd')"

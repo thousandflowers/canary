@@ -27,14 +27,19 @@ _CANARY_LOADED=1
 [ -d "${CANARY_STATE_FILE%/*}" ] || mkdir -p "${CANARY_STATE_FILE%/*}" 2>/dev/null
 
 # --- tunables ----------------------------------------------------------------
-: "${CANARY_NIGHT_START:=22}"         # circadian penalty starts at/after this hour
-: "${CANARY_NIGHT_END:=7}"            # ...and before this hour
-: "${CANARY_NIGHT_MULT:=130}"         # penalty as percent: 100 = off, 130 = x1.3
+: "${CANARY_NIGHT_MULT:=150}"         # multiplier at the deepest circadian trough
+                                      # (150 = x1.5 at 02:00-04:00); 100 = off
 : "${CANARY_IDLE_THRESHOLD:=300}"     # gaps longer than this (sec) count as a break, not work
-: "${CANARY_MIN_SCORE:=0}"            # only draw the bird at/above this score (0 = always; 46 = tired+)
-# score = minutes/3 + count/2 + avglen/10   (each term caps a band, total 0-100)
-#   == (min/120*40) + (count/80*40) + (avglen/200*20)   from the spec
-# NOTE: a playful *activity* proxy, not a real measure of cognitive load.
+: "${CANARY_MIN_SCORE:=0}"            # only draw the bird at/above this score
+                                      # (0 = always; 71 = worn+, the KSS>=7 line)
+# score = time_points(active minutes) + count/2 + avglen/10, then the
+# time-of-day multiplier, capped at 100. Bands map onto the five labelled
+# anchors of the Karolinska Sleepiness Scale: fresh=KSS1, chirpy=KSS3,
+# tired=KSS5 ("neither alert nor sleepy"), worn=KSS7 ("sleepy"), dead=KSS9.
+# KSS>=7 is the level at which fatigue-risk protocols call for a break, which
+# is why `worn`, not `tired`, is the band worth acting on.
+# NOTE: still an *activity* proxy. The shape is evidence-based; the inputs are
+# keystrokes, not a psychomotor vigilance task.
 
 # --- record one executed command --------------------------------------------
 _canary_record() {
@@ -95,19 +100,50 @@ _canary_render() {
   fi
 }
 
+# --- active minutes -> points ------------------------------------------------
+# Concave, not linear. The vigilance-decrement literature is consistent that the
+# curve is front-loaded: about half the decrement lands in the first ~15 min,
+# reaction times climb reliably past ~30 min, costs steepen after ~60 min, and
+# then it flattens rather than continuing straight up.
+#   15m->7  30m->14  1h->26  2h->43  3h->55  5h->72  8h->86  12h->97
+# The old min/3 was a straight line: it under-read the first hour (60 min of
+# solid work scored 20, still "chirpy") and pinned everything past 5h at 100,
+# which turned the dead bird into wallpaper.
+_canary_time_points() {
+  echo $(( $1 * 130 / ($1 + 240) ))
+}
+
+# --- time-of-day: percentage points added, at full amplitude -----------------
+# Shape from the circadian literature: the nadir runs 02:00-06:00 and is
+# deepest 02:00-04:00; attention bottoms out 04:00-07:00; there is a real
+# post-lunch dip 13:00-16:00 that is circadian, not dietary; and 17:00-21:00
+# covers the evening "wake maintenance zone", where alertness is genuinely high.
+# The old rule — a flat x1.3 from 22:00 to 07:00 — penalised you hardest during
+# the part of the evening you are sharpest, and treated 23:00 like 03:00.
+_canary_circadian_excess() {
+  case $1 in
+    2|3|4)          echo 50 ;;  # deepest trough
+    5|6)            echo 40 ;;
+    0|1)            echo 25 ;;
+    7|13|14|15|23)  echo 15 ;;  # tail of the nadir; the post-lunch dip
+    16|22)          echo 5 ;;
+    *)              echo 0 ;;   # 08-12 morning peak, 17-21 wake maintenance
+  esac
+}
+
 # --- compute the 0-100 fatigue score from current session state -------------
 _canary_score() {
   _cy_min=$(( CANARY_ACTIVE_SECONDS / 60 ))  # active minutes (idle excluded)
   _cy_avglen=$(_canary_avg)
-  _cy_s=$(( _cy_min / 3 + CANARY_PROMPT_COUNT / 2 + _cy_avglen / 10 ))
+  _cy_s=$(( $(_canary_time_points "$_cy_min") + CANARY_PROMPT_COUNT / 2 + _cy_avglen / 10 ))
 
-  # circadian penalty (configurable; set CANARY_NIGHT_MULT=100 to disable)
   # 10# forces base 10: `08`/`09` are invalid octal and would abort the shell.
   # shellcheck disable=SC3052  # bash/zsh/ksh only; dash never reaches a prompt hook
   _cy_hour=$(( 10#$(date +%H) ))
-  if [ "$_cy_hour" -ge "$CANARY_NIGHT_START" ] || [ "$_cy_hour" -lt "$CANARY_NIGHT_END" ]; then
-    _cy_s=$(( _cy_s * CANARY_NIGHT_MULT / 100 ))
-  fi
+  # CANARY_NIGHT_MULT is the multiplier at the bottom of the trough; it scales
+  # the whole curve, so 100 switches the time-of-day adjustment off entirely.
+  _cy_excess=$(( $(_canary_circadian_excess "$_cy_hour") * (CANARY_NIGHT_MULT - 100) / 50 ))
+  [ "$_cy_excess" -gt 0 ] && _cy_s=$(( _cy_s * (100 + _cy_excess) / 100 ))
 
   [ "$_cy_s" -gt 100 ] && _cy_s=100
   echo "$_cy_s"

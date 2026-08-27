@@ -65,9 +65,28 @@ if string match -q -- '*CANARY_RESET 1*' "$out"
 end
 
 # --- 2. score formula, identical to canary.sh --------------------------------
-# 3600s = 60min -> 20 ; 40 prompts -> 20 ; avg len 50 -> 5 ; total 45
+# 3600s = 60min -> 26 ; 40 prompts -> 20 ; avg len 50 -> 5 ; total 51
 set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_PROMPT_COUNT 40; set -g CANARY_LEN_SUM 2000; _canary_score")
-assert_eq "score-formula" "$out" "45"
+assert_eq "score-formula" "$out" "51"
+
+# the concave time curve must match canary.sh point for point, or the prompt
+# bird and the statusline bird disagree about the same session
+for row in "0 0" "15 7" "30 14" "60 26" "120 43" "180 55" "300 72" "480 86" "720 97"
+    set parts (string split ' ' -- $row)
+    set out (run "_canary_time_points $parts[1]")
+    assert_eq "time-curve-$parts[1]m" "$out" "$parts[2]"
+end
+
+# ...and so must the circadian table
+for row in "0 25" "2 50" "4 50" "5 40" "7 15" "9 0" "13 15" "16 5" "20 0" "22 5" "23 15"
+    set parts (string split ' ' -- $row)
+    set out (run "_canary_circadian_excess $parts[1]")
+    assert_eq "circadian-$parts[1]h" "$out" "$parts[2]"
+end
+
+# CANARY_NIGHT_MULT=100 disables the time-of-day adjustment at any hour
+set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_NIGHT_MULT 100; _canary_score")
+assert_eq "circadian-disabled" "$out" "26"
 
 set out (run "set -g CANARY_ACTIVE_SECONDS 999999; set -g CANARY_PROMPT_COUNT 9999; _canary_score")
 assert_eq "score-clamped" "$out" "100"
@@ -102,11 +121,9 @@ assert_eq "active-gap-accrued" "$out" "600"
 set out (run "_canary_record ''; echo \$CANARY_PROMPT_COUNT")
 assert_eq "empty-not-counted" "$out" "0"
 
-# --- 6. circadian penalty ----------------------------------------------------
-set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_NIGHT_MULT 200; set -g CANARY_NIGHT_START 0; set -g CANARY_NIGHT_END 24; _canary_score")
-assert_eq "night-penalty" "$out" "40"
-set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_NIGHT_MULT 200; set -g CANARY_NIGHT_START 99; set -g CANARY_NIGHT_END 0; _canary_score")
-assert_eq "night-off" "$out" "20"
+# --- 6. time of day: a bigger multiplier may only raise the score ------------
+set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_NIGHT_MULT 150; test (_canary_score) -ge 26; and echo ge; or echo LOWER")
+assert_eq "circadian-monotone" "$out" "ge"
 
 # --- 7. quiet threshold ------------------------------------------------------
 set out (run "set -g CANARY_MIN_SCORE 50; _canary_compute")

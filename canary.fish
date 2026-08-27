@@ -17,10 +17,9 @@ set -q CANARY_LAST_ACTIVE;    or set -g CANARY_LAST_ACTIVE $CANARY_START_TIME
 set -q CANARY_STATE_FILE;     or set -g CANARY_STATE_FILE $HOME/.canary/canary-state
 mkdir -p (dirname $CANARY_STATE_FILE) 2>/dev/null
 
-# --- tunables (night penalty configurable; CANARY_NIGHT_MULT=100 disables) ---
-set -q CANARY_NIGHT_START; or set -g CANARY_NIGHT_START 22
-set -q CANARY_NIGHT_END;   or set -g CANARY_NIGHT_END 7
-set -q CANARY_NIGHT_MULT;  or set -g CANARY_NIGHT_MULT 130
+# --- tunables (CANARY_NIGHT_MULT is the multiplier at the deepest circadian
+# trough, 02:00-04:00; 100 switches the time-of-day adjustment off) -----------
+set -q CANARY_NIGHT_MULT;  or set -g CANARY_NIGHT_MULT 150
 set -q CANARY_IDLE_THRESHOLD; or set -g CANARY_IDLE_THRESHOLD 300
 set -q CANARY_MIN_SCORE;      or set -g CANARY_MIN_SCORE 0
 
@@ -86,17 +85,45 @@ function _canary_render
     test "$name" = dead; and printf '%s\n' '  tweet… you look fried. reset with  set -x CANARY_RESET 1'
 end
 
+# --- active minutes -> points ------------------------------------------------
+# Concave, not linear — see canary.sh for the reasoning and the reference curve.
+# Must stay identical to canary.sh or the prompt bird and the statusline bird
+# tell different stories about the same session.
+function _canary_time_points
+    math "floor($argv[1] * 130 / ($argv[1] + 240))"
+end
+
+# --- time-of-day: percentage points added, at full amplitude -----------------
+# Nadir 02:00-06:00, deepest 02:00-04:00; post-lunch dip 13:00-16:00;
+# 17:00-21:00 is the evening wake maintenance zone, so no penalty there.
+function _canary_circadian_excess
+    switch $argv[1]
+        case 2 3 4
+            echo 50
+        case 5 6
+            echo 40
+        case 0 1
+            echo 25
+        case 7 13 14 15 23
+            echo 15
+        case 16 22
+            echo 5
+        case '*'
+            echo 0
+    end
+end
+
 # --- compute the 0-100 fatigue score from current session state -------------
 function _canary_score
     set -l min (math "floor($CANARY_ACTIVE_SECONDS / 60)")
     set -l avglen (_canary_avg)
-    set -l s (math "floor($min / 3 + $CANARY_PROMPT_COUNT / 2 + $avglen / 10)")
+    set -l s (math "floor("(_canary_time_points $min)" + $CANARY_PROMPT_COUNT / 2 + $avglen / 10)")
 
     set -l hour (date +%H | sed 's/^0*//')
     test -z "$hour"; and set hour 0
-    if test $hour -ge $CANARY_NIGHT_START -o $hour -lt $CANARY_NIGHT_END
-        set s (math "floor($s * $CANARY_NIGHT_MULT / 100)")
-    end
+    # CANARY_NIGHT_MULT scales the whole curve, so 100 disables it.
+    set -l excess (math "floor("(_canary_circadian_excess $hour)" * ($CANARY_NIGHT_MULT - 100) / 50)")
+    test $excess -gt 0; and set s (math "floor($s * (100 + $excess) / 100)")
 
     test $s -gt 100; and set s 100
     echo $s

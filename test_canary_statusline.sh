@@ -37,12 +37,12 @@ assert_has "fresh-band" "$out" "fresh"
 assert_has "fresh-eye"  "$out" "▐ O ▌>"
 assert_has "fresh-turns" "$out" "2t"
 
-# 2) tired: 60 min, 40 turns, 5 errors → 20 + 20 + 15 = 55
+# 2) tired: 60 min → 26, 40 turns → 20, 5 errors × 3 = 15; total 61
 mk "$TMP/t2" 40 0 5
 out=$(run "$(ccjson "$TMP/t2" 3600000)" CANARY_SHOW_SCORE=1)
 assert_has "tired-band"  "$out" "tired"
 assert_has "tired-eye"   "$out" "▐ - ▌>"
-assert_has "tired-score" "$out" "· 55"
+assert_has "tired-score" "$out" "· 61"
 assert_has "tired-err"   "$out" "5e"
 
 # 3) dead: huge session, raw caps at 100, no history so raw>personal(0) → stays dead
@@ -70,14 +70,32 @@ assert_empty "disabled" "$out"
 out=$(run "$(ccjson "$TMP/t1" 180000)" CANARY_MIN_SCORE=50)
 assert_empty "min-score" "$out"
 
-# 8) anti-habituation: old high peak (age 10) → personal≈95, ~0 debt. today raw=92
-#    (60min→20 + 144turns/2=72) ≤ personal → dead demotes to worn.
-H="$TMP/anti"; today=$(( $(date +%s) / 86400 )); echo "$((today-10)) 95" > "$H"
+# 8) anti-habituation: an old high peak (age 10) → personal 100, ~0 debt. Today
+#    raw = 60min→26 + 144turns/2=72 = 98 ≤ personal, and no recent streak, so
+#    the dead bird is calmed to worn. A bird that is dead every single day stops
+#    being read at all.
+H="$TMP/anti"; today=$(( $(date +%s) / 86400 )); echo "$((today-10)) 100" > "$H"
 mk "$TMP/t8" 144 0 0
 out=$(printf '%s' "$(ccjson "$TMP/t8" 3600000)" | env CANARY_NIGHT_MULT=100 \
   CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
 assert_has "anti-demote" "$out" "worn"
 assert_has "anti-eye"    "$out" "▐ ~ ▌>"
+
+# 8b) ...but NOT during a streak. Chronic sleep restriction accumulates to
+#     severe deficits "without full awareness of the affected individuals", so
+#     the person two-plus days deep is exactly the one who must not be calmed.
+#     Same session, same personal average, but two prior nights past the limit.
+H8="$TMP/anti-streak"
+printf '%s 100\n%s 95\n%s 95\n' "$((today-10))" "$((today-1))" "$((today-2))" > "$H8"
+out=$(printf '%s' "$(ccjson "$TMP/t8" 3600000)" | env CANARY_NIGHT_MULT=100 \
+  CANARY_HISTORY_FILE="$H8" bash "$SCRIPT")
+assert_has "streak-no-demote"     "$out" "dead"
+assert_has "streak-no-demote-eye" "$out" "▐ x ▌v"
+
+# 8c) CANARY_DEAD_ABSOLUTE=1 still overrides the calming outright
+out=$(printf '%s' "$(ccjson "$TMP/t8" 3600000)" | env CANARY_NIGHT_MULT=100 \
+  CANARY_DEAD_ABSOLUTE=1 CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
+assert_has "dead-absolute" "$out" "dead"
 
 # 9) escalation: two consecutive prior nights ≥90 → line prints (face decoupled)
 H2="$TMP/esc"; printf '%s 95\n%s 95\n' "$((today-1))" "$((today-2))" > "$H2"

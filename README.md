@@ -72,30 +72,115 @@ CANARY_DISABLED=1       # bird sleeps (no output)
 CANARY_RESET=1          # fresh session, bird young again
 CANARY_SHOW_SCORE=1     # show the fatigue number 0–100
 # quieter: only show the bird once it actually matters
-CANARY_MIN_SCORE=46     # draw only at tired+ (0 = always, default; 71 = worn+)
+CANARY_MIN_SCORE=71     # draw only at worn+ — the level worth acting on
+                        # (0 = always, the default; 46 = tired+, chattier)
 # idle-aware: coffee/lunch breaks don't age the bird — only active work counts
 CANARY_IDLE_THRESHOLD=300  # a gap longer than this (sec) stops the clock (default 300 = 5 min)
 # circadian penalty — defaults assume a daytime schedule.
 # night owl? tune or switch it off:
-CANARY_NIGHT_START=22   # hour the penalty starts (default 22)
-CANARY_NIGHT_END=7      # hour it ends            (default 7)
-CANARY_NIGHT_MULT=130   # penalty percent: 100 = off, 130 = ×1.3 (default)
+CANARY_NIGHT_MULT=150   # multiplier at the bottom of the circadian trough
+                        # (02:00–04:00). scales the whole curve, so 100 = off.
+                        # replaces CANARY_NIGHT_START/END, which are gone — the
+                        # penalty is a curve now, not a window with two edges.
 ```
 
 ## the "fatigue" number
 ```
-shell:        minutes/3 + commands/2 + avg_cmd_len/10
-Claude Code:  minutes/3 + turns/2 + errors·3 + reps·2
-both          × CANARY_NIGHT_MULT/100 (night)  + multi-day debt   (capped at 100)
+shell:        time(minutes) + commands/2 + avg_cmd_len/10
+Claude Code:  time(minutes) + turns/2    + errors·3 + reps·2
+both          × the time-of-day curve  + multi-day debt   (capped at 100)
 0–20 fresh   21–45 chirpy   46–70 tired   71–90 worn   91–100 dead
 ```
 *minutes* = **active** time only: gaps longer than `CANARY_IDLE_THRESHOLD`
 (default 5 min) are treated as breaks and don't count. leave the terminal
 open all afternoon - the bird only ages while you actually work.
 
-**honest caveat:** this is a crude *activity* proxy, not real cognitive load.
-a deep flow session and a frustrating debug both look identical to it. treat
-the bird as a playful timer, not a doctor.
+**honest caveat:** this is an *activity* proxy, not real cognitive load. a deep
+flow session and a frustrating debug can still look alike to it, and the inputs
+are keystrokes, not a psychomotor vigilance task. treat the bird as a playful
+timer, not a doctor. what follows is why the *shape* of the curve is what it is.
+
+### why these numbers
+
+**the five birds are the five labelled points of a real scale.** the Karolinska
+Sleepiness Scale runs 1–9 but is verbally anchored at only five: *extremely
+alert* (1), *alert* (3), *neither alert nor sleepy* (5), *sleepy, but no
+difficulty remaining awake* (7), *extremely sleepy, fighting sleep* (9). the
+birds map straight onto them:
+
+| bird | KSS | means |
+|---|---|---|
+| fresh | 1 | extremely alert |
+| chirpy | 3 | alert |
+| tired | 5 | neither alert nor sleepy — the neutral midpoint, **not** impaired |
+| worn | **7** | sleepy. **fatigue-risk protocols call for a break here** |
+| dead | 9 | fighting sleep |
+
+that's why `CANARY_MIN_SCORE=71` (worn) is the quiet threshold worth setting,
+not 46. **tired is not a problem. worn is.**
+
+**time is a curve, not a line.** the vigilance-decrement literature is
+consistent that the drop is front-loaded — roughly half of it inside the first
+15 minutes, reaction times climbing reliably past 30, costs steepening after 60
+— and then it flattens instead of continuing straight up. so:
+
+```
+15m→7   30m→14   1h→26   2h→43   3h→55   5h→72   8h→86   12h→97
+```
+
+five hours of genuinely active work lands on **worn**, the KSS-7 line. the old
+formula was linear `minutes/3`: it under-read the first hour (60 solid minutes
+scored 20, still "chirpy") and pinned everything past 5h at 100, which turned
+the dead bird into wallpaper.
+
+**the night penalty follows the actual circadian trough.** the nadir is
+02:00–06:00 and deepest 02:00–04:00; attention bottoms out 04:00–07:00; there
+is a genuine post-lunch dip 13:00–16:00 that is circadian, not caused by
+lunch; and 17:00–21:00 is the evening *wake maintenance zone*, where alertness
+is high. the old rule — a flat ×1.3 from 22:00 to 07:00 — penalised you hardest
+while you were at your sharpest and treated 23:00 exactly like 03:00.
+
+**errors and reps are the best-evidenced signals canary has.** mental fatigue
+reliably increases error rates *and* perseveration — continuing to repeat an
+action that is not working — which is exactly what `reps` counts. that makes
+the Claude Code bird the better instrument: the shell bird can only see time
+and typing, and `avg_cmd_len` in particular has no evidence behind it at all.
+
+**why multi-day debt exists.** chronic sleep restriction produces cumulative
+deficits comparable to two or three days of total sleep deprivation, and it
+does so *"without full awareness of the affected individuals."* you cannot
+self-assess your way out of this, which is the whole argument for an ambient
+bird instead of asking yourself how you feel.
+
+that finding also fixes the anti-habituation rule. canary calms a dead bird to
+worn when today is no worse than your own recent average, because a bird that
+is dead every day carries no information — **but not during a streak.** two or
+more consecutive days past your limit is precisely the case where you can't
+feel it, so the bird stays dead and the `✕ N nights` line keeps counting.
+
+**deliberately not implemented:** 90-minute "ultradian work cycles". Kleitman's
+basic rest-activity cycle is solid in *sleep*; in waking it is weakly supported,
+reported cycles range 70–120 minutes with large individual variation, and
+essentially every source advocating 90-minute work blocks is a productivity
+blog rather than peer review. hard-coding it would be inventing precision.
+
+<details>
+<summary>sources</summary>
+
+- Åkerstedt & Gillberg, *Subjective and objective sleepiness in the active
+  individual* — the KSS; validated against reaction-time lapses, EEG
+  alpha/theta and slow eye movements.
+- Åkerstedt & Folkard, *The three-process model of alertness and its extension
+  to performance, sleep latency, and sleep length*, SLEEP.
+- van der Linden, Frese & Meijman, *Mental fatigue and the control of cognitive
+  processes: effects on perseveration and planning*, Acta Psychologica (2003).
+- Van Dongen, Maislin, Mullington & Dinges, *The cumulative cost of additional
+  wakefulness*, SLEEP 26(2):117–126 (2003).
+- Albulescu et al., *"Give me a break!" A systematic review and meta-analysis
+  on the efficacy of micro-breaks*, PLOS ONE (2022).
+- Valdez, *Circadian rhythms in attention*, Yale J Biol Med (2019).
+
+</details>
 
 ## Claude Code statusline
 canary also perches next to caveman's `[CAVEMAN]` badge in Claude Code's status line:

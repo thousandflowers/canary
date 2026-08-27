@@ -29,7 +29,8 @@
 #   CANARY_HISTORY_FILE      where daily peaks live (default ~/.canary/history)
 #   CANARY_DEAD_ABSOLUTE=1   show the dead bird at >90 always (default: only when
 #                            today is worse than your own recent average)
-#   CANARY_NIGHT_START=22 CANARY_NIGHT_END=7 CANARY_NIGHT_MULT=130  circadian penalty
+#   CANARY_NIGHT_MULT=150    multiplier at the bottom of the circadian trough
+#                            (02:00-04:00); scales the whole curve, 100 = off
 
 [ "${CANARY_DISABLED:-0}" = "1" ] && exit 0
 
@@ -42,6 +43,29 @@ DEBT_MAX=${CANARY_DEBT_MAX:-30}
 # --- tiny JSON scraper (compact CC JSON only; no jq) -------------------------
 # digits-only extraction doubles as terminal-escape-injection defense.
 json_int() { printf '%s' "$1" | grep -o "\"$2\":[0-9]*" | head -1 | grep -o '[0-9]*'; }
+
+# --- active minutes -> points ------------------------------------------------
+# Concave, not linear: the vigilance decrement is front-loaded (roughly half of
+# it inside the first ~15 min, reaction times climbing past ~30 min, costs
+# steepening after ~60 min) and then flattens. Identical to canary.sh, because
+# the prompt bird and this one must tell the same story.
+#   15m->7  30m->14  1h->26  2h->43  3h->55  5h->72  8h->86  12h->97
+time_points() { echo $(( $1 * 130 / ($1 + 240) )); }
+
+# --- time-of-day: percentage points added, at full amplitude -----------------
+# Circadian nadir 02:00-06:00, deepest 02:00-04:00; a real (circadian, not
+# dietary) post-lunch dip 13:00-16:00; and 17:00-21:00 is the evening wake
+# maintenance zone, where alertness is genuinely high, so nothing is added.
+circadian_excess() {
+  case $1 in
+    2|3|4)          echo 50 ;;
+    5|6)            echo 40 ;;
+    0|1)            echo 25 ;;
+    7|13|14|15|23)  echo 15 ;;
+    16|22)          echo 5 ;;
+    *)              echo 0 ;;
+  esac
+}
 
 # --- gather signals, per mode ------------------------------------------------
 input=""
@@ -84,7 +108,11 @@ if printf '%s' "$input" | grep -q '"transcript_path"'; then
   # fatigue meter — it made the score non-monotonic in time (bird got HEALTHIER
   # as minutes passed). errors + reps already capture frantic/stuck. Fatigue now
   # only ever climbs within a session.
-  raw=$(( min / 3 + turns / 2 + errors * ERR_WEIGHT + reps * REP_WEIGHT ))
+  # errors and reps are the best-evidenced terms canary has: mental fatigue
+  # reliably increases error rates AND perseveration — repeating an action that
+  # is not working — which is exactly what `reps` counts. The shell-mode
+  # fallback below has neither signal, which makes this the better instrument.
+  raw=$(( $(time_points "$min") + turns / 2 + errors * ERR_WEIGHT + reps * REP_WEIGHT ))
 else
   # ---- shell-state fallback ----
   statname="p"
@@ -101,15 +129,16 @@ else
   done < "$STATE"
   min=$(( active / 60 ))
   turns=$prompt_count
-  raw=$(( min / 3 + prompt_count / 2 + avg_len / 10 ))
+  raw=$(( $(time_points "$min") + prompt_count / 2 + avg_len / 10 ))
 fi
 
-# --- circadian penalty -------------------------------------------------------
-ns=${CANARY_NIGHT_START:-22}; ne=${CANARY_NIGHT_END:-7}; nm=${CANARY_NIGHT_MULT:-130}
+# --- time of day -------------------------------------------------------------
+# CANARY_NIGHT_MULT is the multiplier at the bottom of the trough (150 = x1.5 at
+# 02:00-04:00) and scales the whole curve, so 100 switches it off.
+nm=${CANARY_NIGHT_MULT:-150}
 hour=$(( 10#$(date +%H) ))
-if [ "$hour" -ge "$ns" ] || [ "$hour" -lt "$ne" ]; then
-  raw=$(( raw * nm / 100 ))
-fi
+excess=$(( $(circadian_excess "$hour") * (nm - 100) / 50 ))
+[ "$excess" -gt 0 ] && raw=$(( raw * (100 + excess) / 100 ))
 [ "$raw" -gt 100 ] && raw=100
 
 # --- multi-day debt + personal baseline + night streak (from history) --------
@@ -169,10 +198,18 @@ elif [ "$score" -le 90 ]; then state=worn;   top='▗▓▓▓▖';  eye='~'; be
 else                           state=dead;   top='▗░░░▖';  eye='x'; beak='v'
 fi
 
-# Anti-habituation: a perma-grinder who is "dead" every night stops seeing it.
-# Show the dead bird only when today is actually worse than your own recent
-# average; otherwise calm it to worn. CANARY_DEAD_ABSOLUTE=1 restores fixed >90.
-if [ "$state" = dead ] && [ "${CANARY_DEAD_ABSOLUTE:-0}" != "1" ] && [ "$raw" -le "$personal" ]; then
+# Anti-habituation: a perma-grinder who is "dead" every night stops seeing it,
+# so a bird that is always dead carries no information. Calm it to worn when
+# today is no worse than your own recent average.
+#
+# But NOT during a streak. The core finding on chronic sleep restriction is that
+# deficits accumulate to severe levels "without full awareness of the affected
+# individuals" — the person several days deep is precisely the one who cannot
+# feel it, and muting the alarm for them inverts the point of the bird. So the
+# demotion is relief for a single bad day, never for an accumulating one.
+# CANARY_DEAD_ABSOLUTE=1 restores a fixed >90.
+if [ "$state" = dead ] && [ "${CANARY_DEAD_ABSOLUTE:-0}" != "1" ] \
+   && [ "$raw" -le "$personal" ] && [ "$nights" -lt 2 ]; then
   state=worn; top='▗▓▓▓▖'; eye='~'; beak='>'
 fi
 
