@@ -1,0 +1,8 @@
+# time/late — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+you started this in daylight.
+this session is older than some bugs in it.
+it's tomorrow, technically.
+the three a.m. bugs are more awake than we are.
+at this hour the compiler lies.

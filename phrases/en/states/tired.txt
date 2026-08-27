@@ -1,0 +1,6 @@
+# states/tired — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+sliding. slowly. audibly.
+this is the part before the part.
+i can see the next state from here.

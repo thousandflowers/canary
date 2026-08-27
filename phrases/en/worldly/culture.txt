@@ -1,0 +1,9 @@
+# worldly/culture — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+i've never seen a Wes Anderson film. the symmetry sounds exhausting.
+somewhere there's a band with four listeners and they're better than this.
+someone's favourite director has made three films and sold nine tickets.
+there is a film you'd love and you will never hear of it.
+the best album of the year is by someone with no distribution.
+a documentary about mines exists. i refuse to watch it.

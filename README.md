@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
 
-> a toy, on purpose. it is tested (four suites, shellcheck, ubuntu + macOS + fish
+> a toy, on purpose. it is tested (five suites, shellcheck, ubuntu + macOS + fish
 > on every push) and the curve is grounded in published fatigue research, but it
 > reads keystrokes, not you. treat it as a nudge, never as a measurement.
 
@@ -226,6 +226,40 @@ the bird lands right beside the badge. A backup is saved to `settings.json.canar
 
 `sh uninstall.sh` removes only canary's segment, leaving the rest intact.
 
+### what the bird says
+On a state **transition** — and only then — the bird may say one line, in the slot
+right of its beak where the note glyph otherwise sits:
+
+```
+▐ O ▌>  ♪                              silent (the default)
+▐ - ▌>  ⌐ sliding. slowly. audibly.    speaking
+▐ x ▌v                                 dead, and done talking
+```
+
+Most transitions produce nothing: roughly two thirds are silence on purpose. The
+lines live in [`phrases/en/`](phrases/en) as plain `.txt` files, one phrase per
+line, and the rarest ones are gated on **recovering**, never on hours logged — a
+tool about fatigue must never pay you to keep working. The reasoning, the voice
+rules, and the whole corpus are in [VOICE.md](VOICE.md); how to add a line is in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+```sh
+CANARY_QUIET=1           # bird and note glyph only, no phrases
+CANARY_ASCII=1           # ASCII substitutes for ⌐ and ♪
+CANARY_RESERVE_COLS=0    # cells to book on the bird's row for whatever shares it
+CANARY_PHRASE_DIR=...    # corpus root (default ~/.canary/phrases, then ./phrases)
+```
+
+See a line drawn before you open a PR:
+
+```sh
+canary preview --state worn --note falling
+canary preview --state fresh --phrase "some candidate line"
+```
+
+`jq` is currently required by `install.sh` to wire the status line. It goes away
+when the loader moves to Go and the corpus is embedded in the binary.
+
 ## uninstall
 ```sh
 sh uninstall.sh
@@ -250,6 +284,23 @@ bash 3.2, so the suites stay 3.2-compatible.
 the three birds must agree: `canary.sh`, `canary.fish` and
 `canary-statusline.sh` share one score formula and one state-file format, and
 the suites assert that parity rather than each implementation in isolation.
+
+## roadmap
+Where the bird is going. Shipped is shipped; the rest is intent, not a promise.
+
+| | | |
+|---|---|---|
+| **v0.6** | released | five bands, circadian curve, multi-day debt, shell + Claude Code statusline |
+| **v0.7** | *this branch* | the bird speaks — `phrases/en/**`, transition-gated encounters, health-gated rarity, `canary preview` |
+| **v0.8** | next | `canary lint` in CI so a phrase PR is a three-second yes; true shuffle without replacement; triggers detected in code (`no-tests`, `uncommitted`, `same-file`, `compacted`) |
+| **v0.9** | later | notes that move during a real break, and only then; `mine/` untranslated lines; `ephemeral/` quarantined by year |
+| **v1.0** | eventually | one Go binary with the corpus in `go:embed` — no `jq`, no shell, correct cell widths via `runewidth` |
+
+The design these phases implement is written down in [VOICE.md](VOICE.md), including
+the parts not built yet. Two rules there are load-bearing and will not be traded
+away: the rarest lines are gated on **recovering, never on hours logged**, and there
+is no counter, no dex, no "12/40 seen" — a collection UI turns a tool about fatigue
+into something that pays you to keep working.
 
 ## license
 MIT. see LICENSE.

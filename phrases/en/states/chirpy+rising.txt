@@ -1,0 +1,5 @@
+# states/chirpy+rising — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+this is going somewhere. suspicious.
+we're climbing. don't look down.

@@ -1,0 +1,7 @@
+# lore/job — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+i had a job. it ended in 1986.
+i was a safety instrument with a name.
+they gave us names. that was cruel and it worked.
+the miners liked me. it didn't help either of us.

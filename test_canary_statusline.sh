@@ -27,7 +27,7 @@ ccjson() { printf '{"transcript_path":"%s","cost":{"total_duration_ms":%s}}' "$1
 run() { # stdin, extra env... → output. fresh history per run unless caller pins it.
   local in=$1; shift
   printf '%s' "$in" | env CANARY_NIGHT_MULT=100 \
-    CANARY_HISTORY_FILE="$TMP/h.$RANDOM" "$@" bash "$SCRIPT"
+    CANARY_PHRASE_STATE="$TMP/ps.$RANDOM" CANARY_RECENT_FILE="$TMP/rec.$RANDOM" CANARY_HISTORY_FILE="$TMP/h.$RANDOM" "$@" bash "$SCRIPT"
 }
 
 # 1) fresh: 2 turns, 3 min → raw = 3/3 + 2/2 = 2
@@ -77,7 +77,7 @@ assert_empty "min-score" "$out"
 H="$TMP/anti"; today=$(( $(date +%s) / 86400 )); echo "$((today-10)) 100" > "$H"
 mk "$TMP/t8" 144 0 0
 out=$(printf '%s' "$(ccjson "$TMP/t8" 3600000)" | env CANARY_NIGHT_MULT=100 \
-  CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
+  CANARY_PHRASE_STATE="$TMP/ps.$RANDOM" CANARY_RECENT_FILE="$TMP/rec.$RANDOM" CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
 assert_has "anti-demote" "$out" "worn"
 assert_has "anti-eye"    "$out" "▐ ~ ▌>"
 
@@ -88,20 +88,20 @@ assert_has "anti-eye"    "$out" "▐ ~ ▌>"
 H8="$TMP/anti-streak"
 printf '%s 100\n%s 95\n%s 95\n' "$((today-10))" "$((today-1))" "$((today-2))" > "$H8"
 out=$(printf '%s' "$(ccjson "$TMP/t8" 3600000)" | env CANARY_NIGHT_MULT=100 \
-  CANARY_HISTORY_FILE="$H8" bash "$SCRIPT")
+  CANARY_PHRASE_STATE="$TMP/ps.$RANDOM" CANARY_RECENT_FILE="$TMP/rec.$RANDOM" CANARY_HISTORY_FILE="$H8" bash "$SCRIPT")
 assert_has "streak-no-demote"     "$out" "dead"
 assert_has "streak-no-demote-eye" "$out" "▐ x ▌v"
 
 # 8c) CANARY_DEAD_ABSOLUTE=1 still overrides the calming outright
 out=$(printf '%s' "$(ccjson "$TMP/t8" 3600000)" | env CANARY_NIGHT_MULT=100 \
-  CANARY_DEAD_ABSOLUTE=1 CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
+  CANARY_DEAD_ABSOLUTE=1 CANARY_PHRASE_STATE="$TMP/ps.$RANDOM" CANARY_RECENT_FILE="$TMP/rec.$RANDOM" CANARY_HISTORY_FILE="$H" bash "$SCRIPT")
 assert_has "dead-absolute" "$out" "dead"
 
 # 9) escalation: two consecutive prior nights ≥90 → line prints (face decoupled)
 H2="$TMP/esc"; printf '%s 95\n%s 95\n' "$((today-1))" "$((today-2))" > "$H2"
 mk "$TMP/t9" 2 0 0
 out=$(printf '%s' "$(ccjson "$TMP/t9" 180000)" | env CANARY_NIGHT_MULT=100 \
-  CANARY_HISTORY_FILE="$H2" bash "$SCRIPT")
+  CANARY_PHRASE_STATE="$TMP/ps.$RANDOM" CANARY_RECENT_FILE="$TMP/rec.$RANDOM" CANARY_HISTORY_FILE="$H2" bash "$SCRIPT")
 assert_has "escalation" "$out" "nights past your limit"
 
 # 10) missing transcript path → no turns, no crash, time-only score
@@ -119,7 +119,7 @@ run "$(ccjson "$TMP/t1" 180000)" >/dev/null; st=$?
 #     ...and still 0 when the escalation line DOES print.
 H3="$TMP/esc2"; printf '%s 95\n%s 95\n' "$((today-1))" "$((today-2))" > "$H3"
 out=$(printf '%s' "$(ccjson "$TMP/t9" 180000)" | env CANARY_NIGHT_MULT=100 \
-  CANARY_HISTORY_FILE="$H3" bash "$SCRIPT"); st=$?
+  CANARY_PHRASE_STATE="$TMP/ps.$RANDOM" CANARY_RECENT_FILE="$TMP/rec.$RANDOM" CANARY_HISTORY_FILE="$H3" bash "$SCRIPT"); st=$?
 [ "$st" -eq 0 ] || { echo "FAIL [exit-status-escalated]: expected 0, got $st"; fails=$((fails+1)); }
 assert_has "exit-status-escalated-still-prints" "$out" "nights past your limit"
 

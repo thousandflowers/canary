@@ -1,0 +1,7 @@
+# returns/long — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+back already. bold.
+that was a short life you had out there.
+the repo missed you. i didn't.
+second session today. i'm counting.

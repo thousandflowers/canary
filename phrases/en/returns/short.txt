@@ -1,0 +1,7 @@
+# returns/short — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+ah. you again.
+i didn't move.
+still here. still dying.
+you left the lights on.

@@ -1,0 +1,7 @@
+# lore/facts — the only place the bird asserts something verifiable.
+# every PR adding a line here must cite a source in its description.
+
+canaries were used in mines until 1986.
+a canary's heart beats about a thousand times a minute.
+we sing more when we're alone.
+the coal is older than the birds by a very large factor.

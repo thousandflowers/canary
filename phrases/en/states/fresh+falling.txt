@@ -1,0 +1,6 @@
+# states/fresh+falling — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+the morning is already leaking.
+peak was ten minutes ago.
+downhill. gently. politely.

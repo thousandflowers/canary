@@ -1,0 +1,8 @@
+# lore/cage — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+some canaries are pets. i've heard about it.
+there are canaries who have never seen a rock.
+somewhere a canary is being hand-fed. good for him.
+domestic canaries live twelve years. i did the math once.
+i don't resent them. i've thought about it a lot.

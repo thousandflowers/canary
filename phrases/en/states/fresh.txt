@@ -1,0 +1,8 @@
+# states/fresh — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+the air is breathable. i'm bored.
+nothing to report. unfortunately.
+i'm here to die, not yet.
+all is well. i suspect something.
+i feel fine. that's never a good sign.

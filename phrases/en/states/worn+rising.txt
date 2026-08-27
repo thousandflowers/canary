@@ -1,0 +1,6 @@
+# states/worn+rising — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+you're pulling it back. huh.
+i had written you off.
+unexpected. keep going.

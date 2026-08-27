@@ -1,0 +1,4 @@
+# states/dead — exactly one line. do not add to it. see VOICE.md rule 9.
+# the silence after it is the loudest thing this tool says.
+
+the canary is quiet.

@@ -1,0 +1,8 @@
+# returns/from-break — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+you stopped. good. i'm dancing now.
+this is the only part i enjoy.
+i'm back. don't ask how.
+the air moved. that's on it, not you.
+resurrection, budget edition.

@@ -1,0 +1,6 @@
+# states/worn+falling — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+one more of these and i'm out.
+i've stopped taking notes.
+this is the last thing i say.

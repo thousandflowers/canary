@@ -1,0 +1,6 @@
+# returns/days — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+oh. it's you.
+i'd almost recovered.
+new session. same file, probably.

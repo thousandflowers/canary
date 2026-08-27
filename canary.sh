@@ -187,8 +187,19 @@ canary() {
       CANARY_DISABLED=1; echo "canary: off (unset CANARY_DISABLED to re-enable)" ;;
     on)
       unset CANARY_DISABLED; echo "canary: on" ;;
+    preview)
+      # Draw a phrase in the bird without waiting for the real state to get
+      # there — how a contributor sees their line before opening a PR.
+      shift
+      _cy_sl="${CANARY_STATUSLINE:-$HOME/.canary/canary-statusline.sh}"
+      if [ ! -f "$_cy_sl" ]; then
+        echo "canary: statusline script not found at $_cy_sl" >&2; return 1
+      fi
+      COLUMNS="${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}" bash "$_cy_sl" preview "$@" ;;
     -h|--help|help)
-      printf 'usage: canary [status|score|reset|on|off]\n' ;;
+      printf 'usage: canary [status|score|reset|on|off]\n'
+      printf '       canary preview --state worn --note falling\n'
+      printf '       canary preview --state fresh --phrase "some candidate line"\n' ;;
     *)
       printf 'canary: unknown command: %s\n' "$1" >&2; return 1 ;;
   esac

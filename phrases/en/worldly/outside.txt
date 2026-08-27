@@ -1,0 +1,10 @@
+# worldly/outside — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+it got dark while we were in here.
+something is happening outside. statistically.
+the world has updated. you have not.
+someone released something today. not us.
+there was weather. you missed it.
+the sun did the whole thing again.
+a stranger had a good day.

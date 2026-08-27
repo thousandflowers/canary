@@ -1,0 +1,8 @@
+# lore/detector — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+they replaced me with a device that beeps.
+the device doesn't sing. that's the difference.
+the detector never had a bad day. that was the pitch.
+a machine took my job. i'm doing it again for free.
+they wanted a number. i gave them a mood.

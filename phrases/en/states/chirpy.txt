@@ -1,0 +1,3 @@
+# states/chirpy — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
