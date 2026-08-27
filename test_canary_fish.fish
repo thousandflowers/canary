@@ -1,0 +1,166 @@
+#!/usr/bin/env fish
+# Self-check for canary.fish. No framework, just asserts.
+#   fish test_canary_fish.fish   # exits non-zero on any failure
+#
+# canary.fish bails out early unless the shell is interactive, so every probe
+# runs in `fish --no-config -i -c`: the interactive guard is satisfied and no
+# config.fish of the developer's leaks in.
+#
+# The point of this suite is PARITY. The fish bird and the sh bird must agree on
+# the score, the bands and the state-file format, or the statusline tells one
+# story and the prompt another.
+#
+# Note: everything shared with the helper functions is `set -g` — a fish
+# function cannot see a variable that is merely local to the script scope.
+
+set -g HERE (cd (dirname (status filename)); and pwd)
+set -g SCRIPT "$HERE/canary.fish"
+set -g TMP (mktemp -d)
+set -g fails 0
+
+# Paths get interpolated into `fish -c "..."` strings below, so they must be
+# escaped: a repo checked out under e.g. "~/Progetti dev/canary" would otherwise
+# split on the space and source nothing at all.
+set -g SCRIPT_Q (string escape -- $SCRIPT)
+set -g TMP_Q (string escape -- $TMP)
+
+function assert_eq --argument-names label got want
+    test "$got" = "$want"; and return 0
+    echo "FAIL [$label]: expected '$want', got '$got'"
+    set -g fails (math $fails + 1)
+end
+
+function assert_has --argument-names label got want
+    string match -q -- "*$want*" "$got"; and return 0
+    echo "FAIL [$label]: expected to contain '$want'"
+    echo "  got: $got"
+    set -g fails (math $fails + 1)
+end
+
+# run <fish code> — fresh interactive fish with canary.fish sourced.
+# stdout is joined with newlines so callers can quote it as one string.
+function run
+    fish --no-config -i -c "set -g CANARY_NIGHT_MULT 100; set -g CANARY_STATE_FILE $TMP_Q/s"(random)"; source $SCRIPT_Q; $argv[1]" 2>/dev/null | string join \n
+end
+
+# --- 1. every band renders its own bird --------------------------------------
+for row in "0 fresh ▐ O ▌>" "20 fresh ▐ O ▌>" "21 chirpy ▐ ^ ▌>" "45 chirpy ▐ ^ ▌>" \
+           "46 tired ▐ - ▌>" "70 tired ▐ - ▌>" "71 worn ▐ ~ ▌>" "90 worn ▐ ~ ▌>" \
+           "91 dead ░ x ▌v" "100 dead ░ x ▌v"
+    set parts (string split ' ' -- $row)
+    set score $parts[1]
+    set want_name $parts[2]
+    set want_eye (string join ' ' $parts[3..-1])
+    set out (run "_canary_render $score show")
+    assert_has "band-$score-name" "$out" "[$want_name $score]"
+    assert_has "band-$score-eye" "$out" "$want_eye"
+end
+
+set out (run "_canary_render 95 show")
+assert_has "dead-nag" "$out" 'CANARY_RESET 1'
+set out (run "_canary_render 90 show")
+if string match -q -- '*CANARY_RESET 1*' "$out"
+    echo "FAIL [worn-no-nag]: worn should not nag"
+    set -g fails (math $fails + 1)
+end
+
+# --- 2. score formula, identical to canary.sh --------------------------------
+# 3600s = 60min -> 20 ; 40 prompts -> 20 ; avg len 50 -> 5 ; total 45
+set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_PROMPT_COUNT 40; set -g CANARY_LENS 50 50; _canary_score")
+assert_eq "score-formula" "$out" "45"
+
+set out (run "set -g CANARY_ACTIVE_SECONDS 999999; set -g CANARY_PROMPT_COUNT 9999; _canary_score")
+assert_eq "score-clamped" "$out" "100"
+
+set out (run "_canary_score")
+assert_eq "score-zero" "$out" "0"
+
+# --- 3. rolling average + 20-sample window -----------------------------------
+set out (run "_canary_avg")
+assert_eq "avg-empty" "$out" "0"
+set out (run "set -g CANARY_LENS 10 20 30; _canary_avg")
+assert_eq "avg-mean" "$out" "20"
+
+set out (run "for i in (seq 25); _canary_record xx; end; count \$CANARY_LENS")
+assert_eq "avg-window-20" "$out" "20"
+
+# the window keeps the NEWEST samples: after 21 commands of growing length the
+# 1-char sample must have aged out, leaving 2 as the oldest
+set out (run "for i in (seq 1 21); _canary_record (string repeat -n \$i x); end; echo \$CANARY_LENS[1]")
+assert_eq "avg-window-newest" "$out" "2"
+
+# --- 4. idle gaps don't age the bird -----------------------------------------
+set out (run "set -g CANARY_IDLE_THRESHOLD 1; set -g CANARY_LAST_ACTIVE (math (date +%s) - 3600); _canary_record ls; echo \$CANARY_ACTIVE_SECONDS")
+assert_eq "idle-gap-ignored" "$out" "0"
+
+set out (run "set -g CANARY_IDLE_THRESHOLD 99999; set -g CANARY_LAST_ACTIVE (math (date +%s) - 600); _canary_record ls; echo \$CANARY_ACTIVE_SECONDS")
+assert_eq "active-gap-accrued" "$out" "600"
+
+# --- 5. bare Enter is not a prompt -------------------------------------------
+set out (run "_canary_record ''; echo \$CANARY_PROMPT_COUNT")
+assert_eq "empty-not-counted" "$out" "0"
+
+# --- 6. circadian penalty ----------------------------------------------------
+set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_NIGHT_MULT 200; set -g CANARY_NIGHT_START 0; set -g CANARY_NIGHT_END 24; _canary_score")
+assert_eq "night-penalty" "$out" "40"
+set out (run "set -g CANARY_ACTIVE_SECONDS 3600; set -g CANARY_NIGHT_MULT 200; set -g CANARY_NIGHT_START 99; set -g CANARY_NIGHT_END 0; _canary_score")
+assert_eq "night-off" "$out" "20"
+
+# --- 7. quiet threshold ------------------------------------------------------
+set out (run "set -g CANARY_MIN_SCORE 50; _canary_compute")
+assert_eq "min-score-quiet" "$out" ""
+set out (run "set -g CANARY_MIN_SCORE 0; _canary_compute")
+assert_has "min-score-loud" "$out" '▐ O ▌>'
+
+# --- 8. state file: byte-compatible with what canary-statusline.sh reads -----
+set -g S "$TMP/state.explicit"
+fish --no-config -i -c "set -g CANARY_STATE_FILE "(string escape -- $S)"; source $SCRIPT_Q; _canary_record hello; _canary_record worldly" >/dev/null 2>&1
+set out (cat $S 2>/dev/null | string join '|')
+assert_has "state-start" "$out" "timestamp_start="
+assert_has "state-count" "$out" "prompt_count=2"
+assert_has "state-avg" "$out" "avg_prompt_len=6"
+assert_has "state-active" "$out" "active_seconds="
+
+# the statusline must consume what the fish bird wrote
+set out (env CANARY_NIGHT_MULT=100 CANARY_STATE_FILE=$S CANARY_HISTORY_FILE=$TMP/hist bash "$HERE/canary-statusline.sh" </dev/null | string join \n)
+assert_has "state-roundtrip" "$out" "2p"
+
+# --- 9. reset wipes the session ----------------------------------------------
+set out (run "_canary_record ls; set -g CANARY_RESET 1; _canary_compute >/dev/null; echo \$CANARY_PROMPT_COUNT/\$CANARY_ACTIVE_SECONDS/"'(set -q CANARY_RESET; and echo set; or echo unset)')
+assert_eq "reset" "$out" "0/0/unset"
+
+# --- 10. the `canary` command ------------------------------------------------
+set out (run "canary")
+assert_has "cmd-status" "$out" '▐ O ▌>'
+set out (run "canary score")
+assert_eq "cmd-score" "$out" "0"
+set out (run "canary reset")
+assert_has "cmd-reset" "$out" 'canary: reset'
+set out (run "canary --help")
+assert_has "cmd-help" "$out" 'usage: canary'
+set out (run "canary off")
+assert_has "cmd-off" "$out" 'canary: off'
+set out (run "canary bogus >/dev/null 2>&1; echo exit=\$status")
+assert_eq "cmd-unknown-exit" "$out" "exit=1"
+
+# --- 11. re-sourcing is a no-op (load guard) ---------------------------------
+set out (run "_canary_record ls; source $SCRIPT_Q; echo \$CANARY_PROMPT_COUNT")
+assert_eq "load-guard" "$out" "1"
+
+# --- 12. REGRESSION: CANARY_BIRD holds a real newline, not a literal \n ------
+# fish does not expand escapes inside double quotes, so `"$l1\n$l2"` used to
+# hand callers a backslash-n instead of two rows.
+set out (run "_canary_render 5 >/dev/null; count (string split \n -- \$CANARY_BIRD)")
+assert_eq "bird-real-newline" "$out" "2"
+
+# --- 13. fish_prompt is wrapped, not destroyed -------------------------------
+set out (fish --no-config -i -c "function fish_prompt; echo MINE; end; source $SCRIPT_Q; set -g CANARY_MIN_SCORE 99; fish_prompt" 2>/dev/null | string join \n)
+assert_has "prompt-wrapped" "$out" "MINE"
+
+rm -rf $TMP
+if test $fails -eq 0
+    echo "ok — all canary.fish checks passed"
+else
+    echo "$fails check(s) failed"
+    exit 1
+end
