@@ -188,4 +188,13 @@ printf '%s\n▐ %s ▌%s' "$top" "$eye" "$beak"
 
 # Escalation: decoupled from the (now-calmed) face so the number still moves.
 # Two or more consecutive days past your limit prints a line that keeps changing.
-[ "$nights" -ge 2 ] && printf '\n✕ %d nights past your limit' "$nights"
+if [ "$nights" -ge 2 ]; then
+  printf '\n✕ %d nights past your limit' "$nights"
+fi
+
+# Exit 0 explicitly. As an `&&` one-liner the test above was the script's last
+# command, so every ordinary render — the overwhelmingly common case, nights < 2
+# — exited 1. Claude Code chains status line commands with `;`, so canary's
+# status leaked out as the whole chain's, and `brew test` fails on a non-zero
+# exit from shell_output.
+exit 0

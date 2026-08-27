@@ -90,4 +90,25 @@ assert_has "escalation" "$out" "nights past your limit"
 out=$(run "$(ccjson "/nonexistent/$RANDOM" 600000)")
 assert_has "missing-transcript" "$out" "fresh"   # 10min/3 only = 3
 
+# 11) REGRESSION: exit status must be 0 on an ordinary render. The escalation
+#     line used to be an `&&` one-liner at the end of the script, so whenever
+#     nights < 2 — nearly always — the script exited 1. Claude Code joins status
+#     line commands with `;`, so that became the whole chain's status, and
+#     `brew test` fails on a non-zero exit from shell_output.
+run "$(ccjson "$TMP/t1" 180000)" >/dev/null; st=$?
+[ "$st" -eq 0 ] || { echo "FAIL [exit-status-normal]: expected 0, got $st"; fails=$((fails+1)); }
+
+#     ...and still 0 when the escalation line DOES print.
+H3="$TMP/esc2"; printf '%s 95\n%s 95\n' "$((today-1))" "$((today-2))" > "$H3"
+out=$(printf '%s' "$(ccjson "$TMP/t9" 180000)" | env CANARY_NIGHT_MULT=100 \
+  CANARY_HISTORY_FILE="$H3" bash "$SCRIPT"); st=$?
+[ "$st" -eq 0 ] || { echo "FAIL [exit-status-escalated]: expected 0, got $st"; fails=$((fails+1)); }
+assert_has "exit-status-escalated-still-prints" "$out" "nights past your limit"
+
+#     ...and 0 when disabled or below the quiet threshold, which exit early.
+run "$(ccjson "$TMP/t1" 180000)" CANARY_DISABLED=1 >/dev/null; st=$?
+[ "$st" -eq 0 ] || { echo "FAIL [exit-status-disabled]: expected 0, got $st"; fails=$((fails+1)); }
+run "$(ccjson "$TMP/t1" 180000)" CANARY_MIN_SCORE=99 >/dev/null; st=$?
+[ "$st" -eq 0 ] || { echo "FAIL [exit-status-quiet]: expected 0, got $st"; fails=$((fails+1)); }
+
 if [ "$fails" -eq 0 ]; then echo "ok — all canary-statusline checks passed"; else echo "$fails check(s) failed"; exit 1; fi
