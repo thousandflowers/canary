@@ -38,44 +38,55 @@ const usage = `canary — a pixel-art bird that wilts while you grind.
 Knobs are environment variables; see the README. CANARY_DISABLED=1 silences
 the bird everywhere except an explicit ` + "`canary`" + ` or ` + "`canary score`" + `.`
 
-func main() {
+// exit is os.Exit, indirected so a test can watch what main does with the code
+// run gives it. main is the only thing in this package that cannot be called
+// twice, and that is the entire reason it does nothing but this.
+var exit = os.Exit
+
+func main() { exit(run(os.Args[1:])) }
+
+// run dispatches one invocation and returns its exit code. Every subcommand
+// returns rather than exits, so the whole binary is reachable from a test in
+// this package — which is where the interesting cases are: a missing file, a
+// settings.json somebody hand-edited, a corpus with a bad line in it.
+func run(args []string) int {
 	cfg := config.FromEnv()
 
 	cmd := "status"
-	args := os.Args[1:]
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
 	}
 
 	switch cmd {
 	case "statusline":
-		os.Exit(runStatusline(cfg))
+		return runStatusline(cfg)
 	case "prompt":
-		os.Exit(runPrompt(cfg))
+		return runPrompt(cfg)
 	case "status":
-		os.Exit(runStatus(cfg))
+		return runStatus(cfg)
 	case "score":
-		os.Exit(runScore(cfg))
+		return runScore(cfg)
 	case "record":
-		os.Exit(runRecord(cfg, args))
+		return runRecord(cfg, args)
 	case "reset":
-		os.Exit(runReset(cfg))
+		return runReset(cfg)
 	case "preview":
-		os.Exit(runPreview(cfg, args))
+		return runPreview(cfg, args)
 	case "lint":
-		os.Exit(runLint(cfg, args))
+		return runLint(cfg, args)
 	case "init":
-		os.Exit(runInit(args))
+		return runInit(args)
 	case "settings":
-		os.Exit(runSettings(cfg, args))
+		return runSettings(cfg, args)
 	case "version", "--version", "-v":
 		fmt.Println("canary " + version)
 	case "help", "-h", "--help":
 		fmt.Println(usage)
 	default:
 		fmt.Fprintf(os.Stderr, "canary: unknown command: %s\n\n%s\n", cmd, usage)
-		os.Exit(2)
+		return 2
 	}
+	return 0
 }
 
 // fail reports an error the person can act on and returns the exit code. The

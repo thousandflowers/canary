@@ -107,3 +107,62 @@ func TestNoTempFilesAreLeftBehind(t *testing.T) {
 		}
 	}
 }
+
+func TestAnUnreadableMemoryIsAnEmptyOne(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	path := filepath.Join(t.TempDir(), "phrase-state")
+	os.WriteFile(path, []byte("state=worn\n"), 0o000)
+	if got := LoadMemory(path); got.Band != "" {
+		t.Errorf("read %+v from an unreadable file", got)
+	}
+}
+
+func TestMemoryIgnoresLinesThatAreNotFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "phrase-state")
+	os.WriteFile(path, []byte("a line with no equals sign\nstate=tired\n"), 0o644)
+	if got := LoadMemory(path); got.Band != "tired" {
+		t.Errorf("a stray line broke the read: %+v", got)
+	}
+}
+
+func TestTheUntranslatedLineIsSpentPerSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "phrase-state")
+	if err := SaveMemory(path, Memory{Band: "fresh", MineSession: "abc-123"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadMemory(path).MineSession; got != "abc-123" {
+		t.Errorf("mine session = %q", got)
+	}
+	// And whatever else is in that field, what comes back is an id.
+	os.WriteFile(path, []byte("mine_session=abc \x1b[31m/../evil\n"), 0o644)
+	// The escape's introducer, the brackets and the path traversal are gone;
+	// what is left is the character class a session id is made of.
+	if got := LoadMemory(path).MineSession; got != "abc31mevil" {
+		t.Errorf("mine session = %q, want the id characters only", got)
+	}
+}
+
+func TestNegativeTimestampsAreNotTimestamps(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "phrase-state")
+	os.WriteFile(path, []byte("ts=-99\nph_ts=-1\n"), 0o644)
+	if got := LoadMemory(path); got.TS != 0 || got.PhTS != 0 {
+		t.Errorf("negative times were kept: %+v", got)
+	}
+}
+
+func TestRecentSurvivesAnUnwritableDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if err := AppendRecent(filepath.Join(dir, "recent"), "a line"); err == nil {
+		t.Error("a failed write should be reported to the caller")
+	}
+}

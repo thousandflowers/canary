@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -225,5 +226,103 @@ func TestSessionIDsAreSanitisedOnTheWayBackIn(t *testing.T) {
 	raw, _ := os.ReadFile(path)
 	if strings.ContainsRune(string(raw), 0x1b) {
 		t.Errorf("an escape survived a rewrite: %q", raw)
+	}
+}
+
+func TestTheDayIsPrunedToWhatItCanHold(t *testing.T) {
+	// Nobody opens thirty-two Claude Code sessions in a day, and if they do the
+	// bird has already said everything it has to say about it.
+	path := filepath.Join(t.TempDir(), "sessions")
+	const today = 20692
+	for i := 0; i < MaxSessionsTracked+5; i++ {
+		CountToday(path, "s-"+strconv.Itoa(i), today)
+	}
+	if got := CountToday(path, "s-last", today); got != MaxSessionsTracked {
+		t.Errorf("count = %d, want the cap %d", got, MaxSessionsTracked)
+	}
+}
+
+func TestCountingSurvivesADirectoryItCannotWrite(t *testing.T) {
+	// The count is worth one ultra line. A status row is worth more.
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if got := CountToday(filepath.Join(dir, "sessions"), "s-1", 20692); got != 1 {
+		t.Errorf("count = %d, want the in-memory answer", got)
+	}
+}
+
+func TestAGitCacheLineThatIsNotAFieldIsIgnored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "git-cache")
+	now := time.Now()
+	os.WriteFile(path, []byte("a stray line\ndir=/repo\nts="+strconv.FormatInt(now.Unix(), 10)+"\ndirty=1\n"), 0o644)
+	if dirty, ok := readGitCache(path, "/repo", now); !ok || !dirty {
+		t.Errorf("a stray line broke the read: dirty=%v ok=%v", dirty, ok)
+	}
+}
+
+func TestAnAnswerFromTheFutureIsNotReused(t *testing.T) {
+	// A clock that jumped backwards would otherwise pin a stale answer in place
+	// until it caught up.
+	path := filepath.Join(t.TempDir(), "git-cache")
+	now := time.Now()
+	writeGitCache(path, "/repo", true, now.Add(time.Hour))
+	if _, ok := readGitCache(path, "/repo", now); ok {
+		t.Error("an answer stamped in the future was reused")
+	}
+}
+
+func TestTheCachedAnswerIsWhatDirtyWorktreeReturns(t *testing.T) {
+	// Proof that the git call is skipped: the directory is not a repository at
+	// all, so a fresh answer would be false.
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	cache := filepath.Join(t.TempDir(), "git-cache")
+	now := time.Now()
+	writeGitCache(cache, dir, true, now)
+
+	if !DirtyWorktree(dir, cache, now) {
+		t.Error("the cached answer was not used")
+	}
+}
+
+func TestGitFailingIsNotUncommittedWork(t *testing.T) {
+	// A trigger that fires on an error is a trigger that fires at random.
+	dir := t.TempDir()
+	// A .git that is a file, not a directory: the walk finds it, git does not
+	// accept it.
+	os.WriteFile(filepath.Join(dir, ".git"), []byte("not a repository"), 0o644)
+	if DirtyWorktree(dir, filepath.Join(t.TempDir(), "cache"), time.Now()) {
+		t.Error("a broken repository reported uncommitted work")
+	}
+}
+
+func TestTheWalkUpStopsAtTheRoot(t *testing.T) {
+	if insideGitRepo(string(filepath.Separator)) {
+		t.Skip("the filesystem root is a git repository on this machine")
+	}
+}
+
+func TestTheWalkUpGivesUpBeforeItGetsSilly(t *testing.T) {
+	// A path deeper than the bound. Walking up forever from a pathological
+	// directory is not worth a joke about uncommitted work.
+	deep := t.TempDir()
+	for i := 0; i < 70; i++ {
+		deep = filepath.Join(deep, "d")
+	}
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Skip(err)
+	}
+	if insideGitRepo(deep) {
+		t.Skip("the temp directory is inside a repository")
 	}
 }

@@ -164,3 +164,70 @@ func contains(hay, needle string) bool {
 		return false
 	})()
 }
+
+func TestLoadRefusesAPathItCannotStat(t *testing.T) {
+	// A file where a directory should be.
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	os.WriteFile(blocker, nil, 0o644)
+	if _, ok := Load(filepath.Join(blocker, "canary-state")); ok {
+		t.Error("a path under a regular file reported usable state")
+	}
+}
+
+func TestAnUnreadableStateFileIsNoState(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	path := filepath.Join(t.TempDir(), "canary-state")
+	os.WriteFile(path, []byte("prompt_count=3\n"), 0o000)
+	if _, ok := Load(path); ok {
+		t.Error("an unreadable state file reported usable state")
+	}
+}
+
+func TestSaveReportsAWriteItCannotMake(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if err := Save(filepath.Join(dir, "canary-state"), State{}); err == nil {
+		t.Error("a failed write should be reported to the caller")
+	}
+}
+
+func TestTheUpgradeReadIsAsCarefulAsTheOrdinaryOne(t *testing.T) {
+	dir := t.TempDir()
+	// No file at all: nothing to reconstruct from.
+	if got := readInt(filepath.Join(dir, "absent"), "avg_prompt_len"); got != 0 {
+		t.Errorf("got %d from a missing file", got)
+	}
+	// A file without the key in it.
+	path := filepath.Join(dir, "canary-state")
+	os.WriteFile(path, []byte("prompt_count=4\n"), 0o644)
+	if got := readInt(path, "avg_prompt_len"); got != 0 {
+		t.Errorf("got %d for a key that is not there", got)
+	}
+	// And a value that is not a number.
+	os.WriteFile(path, []byte("avg_prompt_len=lots\n"), 0o644)
+	if got := readInt(path, "avg_prompt_len"); got != 0 {
+		t.Errorf("got %d for a value that is not a number", got)
+	}
+}
+
+func TestParseIntAcceptsAPlainNumberAndNothingElse(t *testing.T) {
+	// The last one is all digits and still not a number: it does not fit.
+	for _, s := range []string{"", "   ", "12a", "-3", "1.5", "99999999999999999999999999"} {
+		if _, ok := parseInt(s); ok {
+			t.Errorf("%q was accepted as a number", s)
+		}
+	}
+	if n, ok := parseInt(" 7 "); !ok || n != 7 {
+		t.Errorf("parseInt(\" 7 \") = %d, %v", n, ok)
+	}
+}

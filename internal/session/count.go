@@ -2,9 +2,10 @@ package session
 
 import (
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/thousandflowers/canary/internal/atomicfile"
 )
 
 // MaxSessionsTracked bounds the file. Nobody opens thirty-two Claude Code
@@ -67,14 +68,10 @@ func readSessions(path string) (int, []string) {
 }
 
 func writeSessions(path string, today int, ids []string) {
-	if path == "" {
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return
-	}
 	body := "day=" + strconv.Itoa(today) + "\nids=" + strings.Join(ids, ",") + "\n"
-	_ = os.WriteFile(path, []byte(body), 0o644)
+	// Best effort: a count that could not be written costs one ultra line,
+	// which is a smaller loss than a status row that failed to render.
+	_ = atomicfile.Write(path, []byte(body))
 }
 
 // sanitizeID keeps the characters a session id is made of and nothing else.

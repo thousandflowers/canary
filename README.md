@@ -369,10 +369,17 @@ zsh, bash, fish. UTF-8 terminal required. macOS and Linux, amd64 and arm64.
 Go 1.24+, one dependency (`runewidth`, for cell widths).
 ```sh
 go test ./...                     # everything, including the corpus linter
+go test ./... -coverprofile=c.out -coverpkg=./... && go tool cover -func=c.out
 go build -o canary ./cmd/canary
 bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
 shellcheck -x install.sh uninstall.sh test_install_uninstall.sh
 ```
+**Coverage is 100%, and CI fails below it.** Not because a number is the point,
+but because the branches that go untested in a tool like this are exactly the
+ones that matter: the unreadable file, the read-only directory, the
+`settings.json` somebody hand-edited, the transcript with one line longer than
+the window. Making them reachable is also what deleted three copies of the same
+atomic write and several branches that could not happen.
 CI runs all of it on ubuntu + macOS, and drives the printed hook in a real zsh,
 bash and fish to check the bird actually draws above a prompt.
 
@@ -385,7 +392,9 @@ Where things live:
 | `internal/session` | signals, from Claude Code's transcript or the shell state file |
 | `internal/state`   | the shell-prompt bird's own counters |
 | `internal/phrase`  | what the bird says, and when it says nothing |
-| `internal/render`  | the art, the stat row, and fitting a line to the cells left |
+| `internal/render`  | the art, the stat row, the break animation, and fitting a line to the cells left |
+| `internal/lint`    | VOICE.md §6, run by `canary lint`, by CI and by the tests |
+| `internal/atomicfile` | the one way canary writes a state file |
 | `cmd/canary`       | the subcommands, and the shell hooks it prints |
 
 `internal/fatigue/parity_test.go` runs the original shell arithmetic in bash and

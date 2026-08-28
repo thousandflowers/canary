@@ -43,6 +43,23 @@ jobs:
           else
             go test ./...
           fi
+      - name: coverage must be total
+        # 100%, enforced. Not because a number is the point, but because the
+        # branches that go uncovered in a tool like this are exactly the ones
+        # that matter: the unreadable file, the read-only directory, the
+        # settings.json somebody hand-edited. Ubuntu only — one canonical
+        # environment is enough for a gate, and the mode-based failure
+        # injection needs a non-root user.
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          go test ./... -coverprofile=cover.out -coverpkg=./... >/dev/null
+          go tool cover -func=cover.out | tail -1
+          uncovered=$(go tool cover -func=cover.out | awk '$1 != "total:" && $3 != "100.0%"')
+          if [ -n "$uncovered" ]; then
+            echo "not covered:"
+            echo "$uncovered"
+            exit 1
+          fi
       - name: lint the corpus
         # The same checks the test suite runs, through the command a contributor
         # uses. A phrase PR should fail here, visibly, rather than inside a Go

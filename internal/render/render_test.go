@@ -184,3 +184,21 @@ func width(s string) int {
 	}
 	return n
 }
+
+func TestFitFallsBackToEightyColumns(t *testing.T) {
+	// COLUMNS is the only honest width source inside a status line, and it is
+	// not always there.
+	const text = "a phrase that fits inside eighty columns"
+	if got := Fit(text, 0, 0); got != text {
+		t.Errorf("got %q with no width given", got)
+	}
+}
+
+func TestFitDropsAStubTooShortToBeWorthIt(t *testing.T) {
+	// Cut at a word boundary, and what is left has to be worth the row.
+	// Twelve cells to play with, and the last word boundary inside them lands
+	// at eleven: silence reads better than "hello there".
+	if got := Fit("hello there is a much longer sentence here", 24, 0); got != "" {
+		t.Errorf("got %q, want nothing: the stub was shorter than the floor", got)
+	}
+}

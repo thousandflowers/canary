@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/thousandflowers/canary/internal/atomicfile"
 )
 
 // GitTTL is how long a working-tree answer is reused. The status row is redrawn
@@ -141,17 +143,11 @@ func readGitCache(path, dir string, now time.Time) (bool, bool) {
 }
 
 func writeGitCache(path, dir string, dirty bool, now time.Time) {
-	if path == "" {
-		return
-	}
 	flag := "0"
 	if dirty {
 		flag = "1"
 	}
 	body := "dir=" + dir + "\nts=" + strconv.FormatInt(now.Unix(), 10) + "\ndirty=" + flag + "\n"
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return
-	}
 	// Best effort: a cache that could not be written costs one git call.
-	_ = os.WriteFile(path, []byte(body), 0o644)
+	_ = atomicfile.Write(path, []byte(body))
 }

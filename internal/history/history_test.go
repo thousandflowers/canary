@@ -197,3 +197,72 @@ func TestRecordPeakPrunesToKeepDays(t *testing.T) {
 		t.Errorf("pruned the wrong end: oldest kept day is %d, want 20005", entries[0].Day)
 	}
 }
+
+func TestLoadReportsAPathItCannotStat(t *testing.T) {
+	// A file where a directory should be. Not "missing", which is ordinary and
+	// silent — broken, which the caller deserves to hear about.
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	os.WriteFile(blocker, nil, 0o644)
+
+	if _, err := Load(filepath.Join(blocker, "history")); err == nil {
+		t.Error("a path under a regular file should be an error")
+	}
+}
+
+func TestLoadReportsAFileItCannotRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	path := filepath.Join(t.TempDir(), "history")
+	os.WriteFile(path, []byte("20692 40\n"), 0o000)
+
+	if _, err := Load(path); err == nil {
+		t.Error("an unreadable history should be an error, not an empty past")
+	}
+}
+
+func TestRecordPeakRefusesASymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	link := filepath.Join(dir, "history")
+	os.WriteFile(target, []byte("20692 40\n"), 0o644)
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if err := RecordPeak(link, 20693, 99); err != nil {
+		t.Fatalf("RecordPeak should decline quietly, got %v", err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "20692 40\n" {
+		t.Errorf("wrote through a symlink: %q", got)
+	}
+}
+
+func TestRecordPeakStopsIfItCannotReadWhatIsThere(t *testing.T) {
+	// Rewriting a history it could not read would throw away every day in it.
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	path := filepath.Join(t.TempDir(), "history")
+	os.WriteFile(path, []byte("20692 40\n"), 0o000)
+
+	if err := RecordPeak(path, 20693, 99); err == nil {
+		t.Error("recording onto an unreadable history should fail loudly")
+	}
+}
+
+func TestRecordPeakReportsAWriteItCannotMake(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if err := RecordPeak(filepath.Join(dir, "history"), 20693, 99); err == nil {
+		t.Error("a failed write should be reported")
+	}
+}

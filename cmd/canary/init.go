@@ -84,9 +84,16 @@ func withBinary(hook string) string {
 	return strings.ReplaceAll(hook, "{{canary}}", shellQuote(binaryPath())) + "\n"
 }
 
+// executable is os.Executable, indirected so the fallback below can be tested.
+// It is the one branch here that cannot be reached by running the binary.
+var executable = os.Executable
+
 // binaryPath resolves this executable, following the symlink Homebrew installs.
+//
+// Absolute, because Claude Code's PATH is not the shell's and a bare `canary`
+// there resolves for some people and silently does not for others.
 func binaryPath() string {
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
 		return "canary" // PATH is the only fallback left
 	}

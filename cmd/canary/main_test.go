@@ -33,9 +33,14 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// run executes the binary in an isolated home and returns stdout and the exit
-// code. Every test gets its own home: these commands write state.
-func run(t *testing.T, home string, env []string, args ...string) (string, int) {
+// runBinary executes the built binary in an isolated home and returns its
+// output and exit code. Every test gets its own home: these commands write
+// state.
+//
+// The in-process tests in unit_test.go cover the same code far more cheaply;
+// what only a real process can prove is the wiring — that the binary someone
+// installs parses its arguments, reads its stdin and exits with the right code.
+func runBinary(t *testing.T, home string, env []string, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Env = append([]string{
@@ -61,12 +66,12 @@ func run(t *testing.T, home string, env []string, args ...string) (string, int) 
 func TestRecordThenScore(t *testing.T) {
 	home := t.TempDir()
 	for _, cmd := range []string{"git status", "make test", "vim internal/state/state.go"} {
-		if _, code := run(t, home, nil, "record", "--", cmd); code != 0 {
+		if _, code := runBinary(t, home, nil, "record", "--", cmd); code != 0 {
 			t.Fatalf("record exited %d", code)
 		}
 	}
 
-	out, code := run(t, home, nil, "score")
+	out, code := runBinary(t, home, nil, "score")
 	if code != 0 {
 		t.Fatalf("score exited %d: %s", code, out)
 	}
@@ -85,7 +90,7 @@ func TestRecordThenScore(t *testing.T) {
 
 func TestRecordIgnoresABareEnter(t *testing.T) {
 	home := t.TempDir()
-	run(t, home, nil, "record", "--", "   ")
+	runBinary(t, home, nil, "record", "--", "   ")
 	if _, err := os.Stat(filepath.Join(home, ".canary", "canary-state")); err == nil {
 		t.Error("an empty command line was recorded as work")
 	}
@@ -93,13 +98,13 @@ func TestRecordIgnoresABareEnter(t *testing.T) {
 
 func TestPromptStaysQuietBelowTheThreshold(t *testing.T) {
 	home := t.TempDir()
-	run(t, home, nil, "record", "--", "ls")
+	runBinary(t, home, nil, "record", "--", "ls")
 
-	quiet, _ := run(t, home, []string{"CANARY_MIN_SCORE=71"}, "prompt")
+	quiet, _ := runBinary(t, home, []string{"CANARY_MIN_SCORE=71"}, "prompt")
 	if quiet != "" {
 		t.Errorf("the bird drew below its threshold:\n%s", quiet)
 	}
-	loud, _ := run(t, home, nil, "prompt")
+	loud, _ := runBinary(t, home, nil, "prompt")
 	if !strings.Contains(loud, "▐ O ▌>") {
 		t.Errorf("the bird did not draw:\n%s", loud)
 	}
@@ -109,14 +114,14 @@ func TestDisabledSilencesTheHooksButNotAnExplicitAsk(t *testing.T) {
 	home := t.TempDir()
 	off := []string{"CANARY_DISABLED=1"}
 
-	if out, _ := run(t, home, off, "prompt"); out != "" {
+	if out, _ := runBinary(t, home, off, "prompt"); out != "" {
 		t.Errorf("prompt spoke while disabled:\n%s", out)
 	}
-	if out, _ := run(t, home, off, "statusline"); out != "" {
+	if out, _ := runBinary(t, home, off, "statusline"); out != "" {
 		t.Errorf("statusline spoke while disabled:\n%s", out)
 	}
 	// Asking the bird directly is a different thing from it appearing uninvited.
-	if out, _ := run(t, home, off, "score"); strings.TrimSpace(out) == "" {
+	if out, _ := runBinary(t, home, off, "score"); strings.TrimSpace(out) == "" {
 		t.Error("`canary score` refused to answer while disabled")
 	}
 }
@@ -124,9 +129,9 @@ func TestDisabledSilencesTheHooksButNotAnExplicitAsk(t *testing.T) {
 func TestResetStartsTheSessionOver(t *testing.T) {
 	home := t.TempDir()
 	for i := 0; i < 5; i++ {
-		run(t, home, nil, "record", "--", "a long command line to raise the average")
+		runBinary(t, home, nil, "record", "--", "a long command line to raise the average")
 	}
-	if out, _ := run(t, home, nil, "reset"); !strings.Contains(out, "canary: reset") {
+	if out, _ := runBinary(t, home, nil, "reset"); !strings.Contains(out, "canary: reset") {
 		t.Errorf("reset said nothing:\n%s", out)
 	}
 	state, _ := os.ReadFile(filepath.Join(home, ".canary", "canary-state"))
@@ -172,7 +177,7 @@ func TestStatuslineReadsAClaudeCodeSession(t *testing.T) {
 
 func TestStatuslineSaysNothingWithNoSessionAndNoState(t *testing.T) {
 	// A fresh bird there would be a lie.
-	if out, code := run(t, t.TempDir(), nil, "statusline"); out != "" || code != 0 {
+	if out, code := runBinary(t, t.TempDir(), nil, "statusline"); out != "" || code != 0 {
 		t.Errorf("statusline invented a session: %q (exit %d)", out, code)
 	}
 }
@@ -180,9 +185,9 @@ func TestStatuslineSaysNothingWithNoSessionAndNoState(t *testing.T) {
 func TestStatuslineFallsBackToTheShellState(t *testing.T) {
 	home := t.TempDir()
 	for i := 0; i < 4; i++ {
-		run(t, home, nil, "record", "--", "go test ./...")
+		runBinary(t, home, nil, "record", "--", "go test ./...")
 	}
-	out, _ := run(t, home, nil, "statusline")
+	out, _ := runBinary(t, home, nil, "statusline")
 	if !strings.Contains(out, "4p") {
 		t.Errorf("the shell's prompts did not reach the status row:\n%s", out)
 	}
@@ -190,7 +195,7 @@ func TestStatuslineFallsBackToTheShellState(t *testing.T) {
 
 func TestPreviewDrawsAnyStateOnDemand(t *testing.T) {
 	home := t.TempDir()
-	out, code := run(t, home, nil, "preview", "--state", "worn", "--note", "falling")
+	out, code := runBinary(t, home, nil, "preview", "--state", "worn", "--note", "falling")
 	if code != 0 {
 		t.Fatalf("preview exited %d: %s", code, out)
 	}
@@ -204,23 +209,23 @@ func TestPreviewDrawsAnyStateOnDemand(t *testing.T) {
 	// Not just the art: preview has to reach the corpus. It silently stopped
 	// doing so once, when the phrase paths gained a language prefix, and the
 	// art-only assertion above did not notice.
-	dead, _ := run(t, home, nil, "preview", "--state", "dead")
+	dead, _ := runBinary(t, home, nil, "preview", "--state", "dead")
 	if !strings.Contains(dead, "the canary is quiet.") {
 		t.Errorf("preview drew no line from the corpus:\n%s", dead)
 	}
 
-	custom, _ := run(t, home, nil, "preview", "--state", "fresh", "--phrase", "a candidate line")
+	custom, _ := runBinary(t, home, nil, "preview", "--state", "fresh", "--phrase", "a candidate line")
 	if !strings.Contains(custom, "a candidate line") {
 		t.Errorf("a contributor's own line was not drawn:\n%s", custom)
 	}
-	if _, code := run(t, home, nil, "preview", "--state", "exhausted"); code != 2 {
+	if _, code := runBinary(t, home, nil, "preview", "--state", "exhausted"); code != 2 {
 		t.Error("an unknown state should be a usage error")
 	}
 }
 
 func TestInitPrintsAHookForEveryShellItClaims(t *testing.T) {
 	for _, shell := range []string{"zsh", "bash", "fish"} {
-		out, code := run(t, t.TempDir(), nil, "init", shell)
+		out, code := runBinary(t, t.TempDir(), nil, "init", shell)
 		if code != 0 {
 			t.Fatalf("init %s exited %d: %s", shell, code, out)
 		}
@@ -231,7 +236,7 @@ func TestInitPrintsAHookForEveryShellItClaims(t *testing.T) {
 			}
 		}
 	}
-	if _, code := run(t, t.TempDir(), nil, "init", "csh"); code != 2 {
+	if _, code := runBinary(t, t.TempDir(), nil, "init", "csh"); code != 2 {
 		t.Error("a shell with no hook should be a usage error, not a silent success")
 	}
 }
@@ -249,7 +254,7 @@ func TestSettingsWritesThroughASymlink(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	if out, code := run(t, home, nil, "settings", "install"); code != 0 {
+	if out, code := runBinary(t, home, nil, "settings", "install"); code != 0 {
 		t.Fatalf("settings install exited %d: %s", code, out)
 	}
 	fi, err := os.Lstat(link)
@@ -268,7 +273,7 @@ func TestSettingsWiringIsReversible(t *testing.T) {
 	settings := filepath.Join(claude, "settings.json")
 	os.WriteFile(settings, []byte(`{"model":"opus","statusLine":{"type":"command","command":"~/.claude/caveman.sh"}}`), 0o644)
 
-	if out, code := run(t, home, nil, "settings", "install"); code != 0 {
+	if out, code := runBinary(t, home, nil, "settings", "install"); code != 0 {
 		t.Fatalf("settings install exited %d: %s", code, out)
 	}
 	cmdLine := statusLineCommand(t, settings)
@@ -282,11 +287,11 @@ func TestSettingsWiringIsReversible(t *testing.T) {
 		t.Error("no backup was taken of the person's own settings")
 	}
 
-	if out, _ := run(t, home, nil, "settings", "install"); !strings.Contains(out, "already wired") {
+	if out, _ := runBinary(t, home, nil, "settings", "install"); !strings.Contains(out, "already wired") {
 		t.Errorf("a second install should be a no-op:\n%s", out)
 	}
 
-	run(t, home, nil, "settings", "remove")
+	runBinary(t, home, nil, "settings", "remove")
 	if got := statusLineCommand(t, settings); got != "~/.claude/caveman.sh" {
 		t.Errorf("uninstall did not leave the row as it found it: %q", got)
 	}
@@ -300,7 +305,7 @@ func TestSettingsRefusesToRewriteJSONWithCommentsInIt(t *testing.T) {
 	original := "{\n  // keep me\n  \"model\": \"opus\"\n}\n"
 	os.WriteFile(settings, []byte(original), 0o644)
 
-	out, code := run(t, home, nil, "settings", "install")
+	out, code := runBinary(t, home, nil, "settings", "install")
 	if code != 0 {
 		t.Fatalf("exited %d: %s", code, out)
 	}
@@ -313,7 +318,7 @@ func TestSettingsRefusesToRewriteJSONWithCommentsInIt(t *testing.T) {
 }
 
 func TestUnknownCommandIsAUsageError(t *testing.T) {
-	out, code := run(t, t.TempDir(), nil, "fly")
+	out, code := runBinary(t, t.TempDir(), nil, "fly")
 	if code != 2 {
 		t.Errorf("exit code = %d, want 2", code)
 	}
@@ -407,7 +412,7 @@ func TestPreviewDrawsEveryBand(t *testing.T) {
 		"fresh": "▐ O ▌>", "chirpy": "▐ ^ ▌>", "tired": "▐ - ▌>",
 		"worn": "▐ ~ ▌>", "dead": "▐ x ▌v",
 	} {
-		out, code := run(t, home, nil, "preview", "--state", band)
+		out, code := runBinary(t, home, nil, "preview", "--state", band)
 		if code != 0 {
 			t.Fatalf("preview --state %s exited %d", band, code)
 		}
@@ -418,7 +423,7 @@ func TestPreviewDrawsEveryBand(t *testing.T) {
 }
 
 func TestLintChecksTheCorpusItShips(t *testing.T) {
-	out, code := run(t, t.TempDir(), nil, "lint")
+	out, code := runBinary(t, t.TempDir(), nil, "lint")
 	if code != 0 {
 		t.Fatalf("the shipped corpus does not pass its own linter (exit %d):\n%s", code, out)
 	}
@@ -435,7 +440,7 @@ func TestLintReportsABrokenCorpusAndFails(t *testing.T) {
 	os.WriteFile(filepath.Join(corpus, "en", "states", "fresh.txt"),
 		[]byte("You should take a break!\n"), 0o644)
 
-	out, code := run(t, home, nil, "lint", corpus)
+	out, code := runBinary(t, home, nil, "lint", corpus)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1:\n%s", code, out)
 	}
@@ -445,7 +450,7 @@ func TestLintReportsABrokenCorpusAndFails(t *testing.T) {
 		}
 	}
 
-	if _, code := run(t, home, nil, "lint", filepath.Join(home, "nope")); code != 2 {
+	if _, code := runBinary(t, home, nil, "lint", filepath.Join(home, "nope")); code != 2 {
 		t.Error("a missing directory should be a usage error")
 	}
 }

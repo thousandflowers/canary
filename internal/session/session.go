@@ -143,17 +143,16 @@ func openTranscript(path string) (io.ReadCloser, bool) {
 		return nil, false
 	}
 	if fi.Size() > TranscriptTail {
-		if _, err := f.Seek(fi.Size()-TranscriptTail, io.SeekStart); err != nil {
-			f.Close()
-			return nil, false
-		}
-		// The seek lands mid-line. Unlike `tail -c`, drop that fragment rather
-		// than counting it: a partial JSONL line is not a turn, and half a
-		// record matching a pattern by accident is a miscount, not a signal.
-		br := bufio.NewReader(f)
+		// A section reader rather than a seek: it cannot fail, and it bounds
+		// the read at the far end too.
+		tail := io.NewSectionReader(f, fi.Size()-TranscriptTail, TranscriptTail)
+		// The window opens mid-line. Unlike `tail -c`, drop that fragment
+		// rather than counting it: a partial JSONL line is not a turn, and half
+		// a record matching a pattern by accident is a miscount, not a signal.
+		br := bufio.NewReader(tail)
 		if _, err := br.ReadString('\n'); err != nil {
 			f.Close()
-			return nil, false
+			return nil, false // one line longer than the whole window
 		}
 		return readCloser{Reader: br, Closer: f}, true
 	}

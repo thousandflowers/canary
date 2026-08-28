@@ -173,3 +173,122 @@ func TestShellStateRejectsANonNumericField(t *testing.T) {
 		t.Errorf("the good field should survive: minutes = %d", got.Minutes)
 	}
 }
+
+func TestATestFileInTheSessionIsNoticed(t *testing.T) {
+	_, in := transcript(t,
+		`{"type":"assistant","message":{"content":[{"type":"tool_use","input":{"file_path":"/repo/internal/state/state_test.go"}}]}}`,
+	)
+	if !FromClaudeCode(in).HasTests {
+		t.Error("a test file was touched and not noticed")
+	}
+}
+
+func TestADirectoryIsNotATranscript(t *testing.T) {
+	dir := t.TempDir()
+	in := []byte(fmt.Sprintf(`{"cost":{"total_duration_ms":0},"transcript_path":%q}`, dir))
+	if got := FromClaudeCode(in).Turns; got != 0 {
+		t.Errorf("read %d turns out of a directory", got)
+	}
+}
+
+func TestOneLineLongerThanTheWholeWindowIsGivenUpOn(t *testing.T) {
+	// The tail window opens mid-line and the fragment is dropped. If there is
+	// no line break in the whole window there is nothing safe to count.
+	path := filepath.Join(t.TempDir(), "huge.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", TranscriptTail+(1<<20))), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := []byte(fmt.Sprintf(`{"cost":{"total_duration_ms":0},"transcript_path":%q}`, path))
+	if got := FromClaudeCode(in).Turns; got != 0 {
+		t.Errorf("counted %d turns in a file with no lines in it", got)
+	}
+}
+
+func TestFirstAskHandlesWhatItIsGiven(t *testing.T) {
+	long := strings.Repeat("a question about the parser ", 10)
+	cases := []struct {
+		name string
+		line string
+		want bool // does it produce a comparable ask
+	}{
+		{"no content at all", `{"type":"user"}`, false},
+		{"too short to mean anything", `{"type":"user","message":{"content":"ok"}}`, false},
+		{"an escaped quote inside", `{"type":"user","message":{"content":"the \"parser\" drops rows"}}`, true},
+		// One backslash, not two: the escape skip walks off the end of the line,
+		// which is the case that needs clamping.
+		{"a trailing escape", `{"type":"user","message":{"content":"the parser drops rows\`, true},
+		{"longer than the prefix", `{"type":"user","message":{"content":"` + long + `"}}`, true},
+	}
+	for _, c := range cases {
+		got := firstAsk([]byte(c.line))
+		if (got != "") != c.want {
+			t.Errorf("%s: firstAsk = %q", c.name, got)
+		}
+		if len(got) > 80 {
+			t.Errorf("%s: %d characters, want the prefix only", c.name, len(got))
+		}
+	}
+}
+
+func TestValuesOfWalksALineWithSeveralValues(t *testing.T) {
+	line := []byte(`{"command":"one"},{"command":"two \" quoted"},{"command":"three"}`)
+	got := valuesOf(line, `"command":"`)
+	if len(got) != 3 || got[0] != "one" || got[2] != "three" {
+		t.Errorf("got %q", got)
+	}
+	// A value that never closes ends the walk rather than reading past it.
+	if got := valuesOf([]byte(`{"command":"unterminated`), `"command":"`); len(got) != 1 {
+		t.Errorf("unterminated: %q", got)
+	}
+	// A single trailing backslash makes the escape skip walk off the end.
+	if got := valuesOf([]byte(`{"command":"ends with a backslash\`), `"command":"`); len(got) != 0 {
+		t.Errorf("trailing escape: %q", got)
+	}
+	if got := valuesOf([]byte(`nothing here`), `"command":"`); got != nil {
+		t.Errorf("got %q from a line with no values", got)
+	}
+}
+
+func TestAnUnreadableTranscriptIsNoTranscript(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	os.WriteFile(path, []byte(`{"type":"user","message":{"content":"hello"}}`+"\n"), 0o000)
+	in := []byte(fmt.Sprintf(`{"cost":{"total_duration_ms":0},"transcript_path":%q}`, path))
+	if got := FromClaudeCode(in).Turns; got != 0 {
+		t.Errorf("read %d turns out of an unreadable file", got)
+	}
+}
+
+func TestAnUnreadableStateFileIsNoState(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	path := filepath.Join(t.TempDir(), "canary-state")
+	os.WriteFile(path, []byte("prompt_count=3\n"), 0o000)
+	if _, ok := FromShellState(path); ok {
+		t.Error("an unreadable state file reported usable signals")
+	}
+}
+
+func TestShellStateIgnoresLinesThatAreNotFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "canary-state")
+	os.WriteFile(path, []byte("a stray line\nprompt_count=3\n"), 0o644)
+	got, ok := FromShellState(path)
+	if !ok || got.Turns != 3 {
+		t.Errorf("got %+v ok=%v", got, ok)
+	}
+}
+
+func TestParseIntAcceptsAPlainNumberAndNothingElse(t *testing.T) {
+	// The last one is all digits and still not a number: it does not fit.
+	for _, s := range []string{"", "  ", "12a", "-3", "1.5", "\x1b[31m9", "99999999999999999999999999"} {
+		if _, ok := parseInt(s); ok {
+			t.Errorf("%q was accepted as a number", s)
+		}
+	}
+	if n, ok := parseInt(" 42 "); !ok || n != 42 {
+		t.Errorf("parseInt(\" 42 \") = %d, %v", n, ok)
+	}
+}

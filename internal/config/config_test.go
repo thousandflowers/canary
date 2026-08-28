@@ -100,3 +100,22 @@ func TestTheCorpusOnlyOverridesWhenThereIsOne(t *testing.T) {
 		t.Errorf("an explicit corpus root was ignored: %s", got)
 	}
 }
+
+func TestDirIsWhereEverythingLives(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CANARY_STATE_FILE", "")
+	if got := FromEnv().Dir(); got != filepath.Join(home, ".canary") {
+		t.Errorf("Dir = %q", got)
+	}
+}
+
+func TestHomeFallsBackToTheEnvironment(t *testing.T) {
+	// os.UserHomeDir fails when HOME is unset, which happens in cron, in some
+	// containers, and in exactly the daemon-ish contexts a status line runs in.
+	t.Setenv("HOME", "")
+	t.Setenv("CANARY_STATE_FILE", "")
+	if got := FromEnv(); got.StateFile == "" {
+		t.Error("no state file path at all with HOME unset")
+	}
+}

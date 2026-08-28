@@ -1,6 +1,9 @@
 package phrase
 
 import (
+	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -51,6 +54,26 @@ func hits() *scripted { return &scripted{values: []int{99, 0}} }
 // missesRare passes the rare die and takes the uncommon one, for a band that
 // rolls both.
 func missesRare() *scripted { return &scripted{values: []int{99, 1, 0}} }
+
+// commonThenRandom fixes the tier dice and lets the shuffle be random, which is
+// what a test about pool membership needs: a fully scripted generator deals the
+// same permutation every time and only ever sees one line of the pool.
+//
+// The dice are told apart by their range, so this does not have to know how
+// many of them a given context rolls. (A pool whose size happened to equal one
+// of those ranges would be fixed too; none of the fixtures is that big.)
+type commonThenRandom struct{}
+
+func (commonThenRandom) IntN(n int) int {
+	switch n {
+	case 100:
+		return 99 // past the silence gate
+	case UltraOdds, RareOdds, UncommonOdds:
+		return 1 // miss every tier above common
+	default:
+		return rand.IntN(n)
+	}
+}
 
 func testCorpus() Corpus {
 	return Corpus{lang: "en", root: ".", fsys: fstest.MapFS{
@@ -349,5 +372,93 @@ func TestLateIsAnHourOrALongSession(t *testing.T) {
 	}
 	if Classify(fatigue.Fresh, 10, 10, true, 0, 14, 30).Late {
 		t.Error("half an hour at 14:00 is not late")
+	}
+}
+
+func TestADeadBirdWithNoLineStaysQuiet(t *testing.T) {
+	// A corpus that lost states/dead.txt must not draw an empty phrase.
+	bare := Corpus{lang: "en", root: ".", fsys: fstest.MapFS{"en/states/fresh.txt": file("a line.")}}
+	if got := Pick(bare, Context{Band: fatigue.Dead}, speaksCommon(), noBag(), nil); got.Text != "" {
+		t.Errorf("drew %+v with no dead line in the corpus", got)
+	}
+}
+
+func TestATemplateThatCanNeverBeFilledIsSilence(t *testing.T) {
+	// Rather than a row with a hole in it. Three attempts, then nothing.
+	c := Corpus{lang: "en", root: ".", fsys: fstest.MapFS{
+		"en/states/tired.txt": file("{file} was rewritten again."),
+	}}
+	ctx := Context{Band: fatigue.Tired, Note: "steady"}
+	if got := Pick(c, ctx, speaksCommon(), noBag(), nil); got.Text != "" {
+		t.Errorf("drew %+v from a template nothing can fill", got)
+	}
+}
+
+func TestATemplateIsFilledWhenTheBirdKnowsTheAnswer(t *testing.T) {
+	c := Corpus{lang: "en", root: ".", fsys: fstest.MapFS{
+		"en/states/tired.txt": file("{file} again. | that file again."),
+	}}
+	ctx := Context{Band: fatigue.Tired, Note: "steady", Slots: Slots{"file": "state.go"}}
+	if got := Pick(c, ctx, speaksCommon(), noBag(), nil); got.Text != "state.go again." {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestTheReturnAndLatePoolsJoinTheCommonTier(t *testing.T) {
+	// Coming back from somewhere, and the hour, are both things the bird can
+	// remark on — but only in a band that is allowed to chat.
+	c := testCorpus()
+	ctx := Context{Band: fatigue.Tired, Note: "steady", Return: "from-break", Late: true}
+
+	seen := map[string]bool{}
+	for i := 0; i < 60; i++ {
+		if got := Pick(c, ctx, commonThenRandom{}, noBag(), nil); got.Text != "" {
+			seen[got.Text] = true
+		}
+	}
+	if !seen["back from somewhere."] {
+		t.Errorf("the returns pool never came up: %v", keys(seen))
+	}
+	if !seen["it is late."] {
+		t.Errorf("the late pool never came up: %v", keys(seen))
+	}
+}
+
+func keys(m map[string]bool) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestAllSkipsWhatItCannotWalkInto(t *testing.T) {
+	// A corpus with an unreadable directory in it still lints and still draws;
+	// the alternative is one bad mode taking the whole bird down.
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "en", "states"), 0o755)
+	os.WriteFile(filepath.Join(dir, "en", "states", "fresh.txt"), []byte("a line.\n"), 0o644)
+	locked := filepath.Join(dir, "en", "locked")
+	os.MkdirAll(locked, 0o755)
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(func() { os.Chmod(locked, 0o755) })
+
+	if got := FromDir(dir).All(); len(got) != 1 {
+		t.Errorf("All returned %q", got)
+	}
+}
+
+func TestFilesAndAllHandleADirectoryThatIsNotThere(t *testing.T) {
+	c := testCorpus()
+	if got := c.Files("en/nowhere"); got != nil {
+		t.Errorf("Files on a missing directory = %q", got)
+	}
+	if got := c.All(); len(got) == 0 {
+		t.Error("All found nothing in a corpus with files in it")
 	}
 }

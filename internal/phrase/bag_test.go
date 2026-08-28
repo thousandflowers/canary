@@ -151,3 +151,37 @@ func TestSavingIsSkippedWhenNothingWasDrawn(t *testing.T) {
 		t.Error("the bag was written without a single draw")
 	}
 }
+
+func TestAnUnreadableBagIsAFreshBag(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	path := filepath.Join(t.TempDir(), "bag.json")
+	os.WriteFile(path, []byte("{}"), 0o000)
+	if got := LoadBag(path).Draw("pool", []string{"a"}, realRand{}, nil); got != "a" {
+		t.Errorf("an unreadable bag stopped the bird speaking: %q", got)
+	}
+}
+
+func TestAnEmptyPoolDrawsNothing(t *testing.T) {
+	if got := LoadBag("").Draw("pool", nil, realRand{}, nil); got != "" {
+		t.Errorf("drew %q from an empty pool", got)
+	}
+}
+
+func TestSaveReportsAWriteItCannotMake(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; the mode would be ignored")
+	}
+	dir := t.TempDir()
+	bag := LoadBag(filepath.Join(dir, "bag.json"))
+	bag.Draw("pool", []string{"a", "b"}, realRand{}, nil)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if err := bag.Save(); err == nil {
+		t.Error("a failed save should be reported to the caller")
+	}
+}

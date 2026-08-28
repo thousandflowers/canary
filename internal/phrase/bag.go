@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"hash/fnv"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/thousandflowers/canary/internal/atomicfile"
 )
 
 // A bag is sampling without replacement: shuffle the pool, consume it in
@@ -113,14 +114,10 @@ func (b *Bag) Save() error {
 	if b == nil || !b.dirty || b.path == "" {
 		return nil
 	}
-	raw, err := json.Marshal(b.pools)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(b.path), 0o755); err != nil {
-		return err
-	}
-	return writeAtomic(b.path, string(raw))
+	// json.Marshal cannot fail for this type: no channels, no functions, no
+	// NaN. The error is dropped rather than dressed up as handled.
+	raw, _ := json.Marshal(b.pools)
+	return atomicfile.Write(b.path, raw)
 }
 
 // shuffled is a Fisher-Yates permutation of 0..n-1.

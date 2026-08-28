@@ -146,7 +146,7 @@ func speak(cfg config.Config, band fatigue.Band, score int, sig session.Signals,
 			ctx.Slots = slotsFor(sig, now)
 
 			bag := phrase.LoadBag(cfg.BagFile)
-			draw := phrase.Pick(corpus(cfg), ctx, globalRand{}, bag, phrase.LoadRecent(cfg.RecentFile))
+			draw := phrase.Pick(corpus(cfg), ctx, dice, bag, phrase.LoadRecent(cfg.RecentFile))
 			_ = bag.Save()
 
 			text, phTS = draw.Text, now.Unix()
@@ -194,9 +194,11 @@ func corpus(cfg config.Config) phrase.Corpus {
 	return phrase.FromFS(canary.Corpus)
 }
 
+// dice is what the bird rolls. It is a variable so a test can hand it a
+// sequence: waiting for a 1-in-300 branch to turn up on its own is not a test.
+var dice phrase.Rand = globalRand{}
+
 // globalRand is the process-wide generator, which math/rand/v2 seeds for us.
-// The phrase package takes the interface so a test can hand it a sequence
-// instead of waiting for a 1-in-40 branch to show up.
 type globalRand struct{}
 
 func (globalRand) IntN(n int) int { return rand.IntN(n) }

@@ -121,17 +121,10 @@ func settingsRemove(path string) int {
 	return 0
 }
 
-// statuslineCommand is the absolute path to this binary plus its subcommand.
-// Absolute because Claude Code's PATH is not the shell's, and a bare `canary`
-// there resolves for some people and silently does not for others.
+// statuslineCommand is the absolute path to this binary plus its subcommand,
+// resolved the same way the shell hook resolves it.
 func statuslineCommand() string {
-	exe, err := os.Executable()
-	if err != nil {
-		exe = "canary" // PATH is the only fallback left
-	} else if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved // Homebrew installs a symlink into its bin
-	}
-	return shellQuote(exe) + " statusline"
+	return shellQuote(binaryPath()) + " statusline"
 }
 
 // readSettings parses the file, treating a missing one as empty. ok is false
@@ -161,12 +154,17 @@ func readSettings(path string) (map[string]any, bool) {
 // settings.json is very often a symlink into a dotfiles repo. Renaming over the
 // link would replace it with a fresh regular file: the dotfiles copy would keep
 // the old configuration, the repo would silently detach, and the person would
-// find out weeks later.
+// find out weeks later. Resolving first and renaming onto the target keeps both
+// the link and the atomicity.
+//
+// It does not go through internal/atomicfile for exactly that reason: every
+// other file canary writes is its own and must refuse a symlink, and this one
+// belongs to the person and must follow it.
 func writeSettings(path string, settings map[string]any) error {
-	b, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
+	// json.MarshalIndent cannot fail here: every value came out of
+	// json.Unmarshal or out of this file. The error is dropped rather than
+	// dressed up as handled.
+	b, _ := json.MarshalIndent(settings, "", "  ")
 	b = append(b, '\n')
 
 	mode := os.FileMode(0o644)
@@ -177,25 +175,16 @@ func writeSettings(path string, settings map[string]any) error {
 		}
 	}
 
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "settings.json.canary.*")
-	if err != nil {
+	tmp := path + ".canary.tmp"
+	if err := os.WriteFile(tmp, b, mode); err != nil {
+		os.Remove(tmp)
 		return err
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
 		return err
 	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmpName, mode); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return nil
 }
 
 // currentCommand digs statusLine.command out of the settings, tolerating any

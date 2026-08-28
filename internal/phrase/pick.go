@@ -103,10 +103,9 @@ func Pick(c Corpus, ctx Context, r Rand, bag *Bag, recent []string) Draw {
 		return Draw{}
 	}
 
+	// One emptiness check, not one per stage: an empty pool and a pool whose
+	// files hold nothing are the same answer — silence.
 	tier, files := poolFor(c, ctx, r)
-	if len(files) == 0 {
-		return Draw{}
-	}
 	lines := c.Lines(files...)
 	if len(lines) == 0 {
 		return Draw{}
@@ -122,10 +121,9 @@ func Pick(c Corpus, ctx Context, r Rand, bag *Bag, recent []string) Draw {
 	// A template whose slots cannot be filled is skipped and another is drawn,
 	// rather than printed with a hole in it.
 	for i := 0; i < slotAttempts; i++ {
+		// Draw always returns a line here: the pool is not empty, and the bag
+		// falls back to a recently used line rather than to nothing.
 		raw := bag.Draw(poolKey(files), lines, r, recent)
-		if raw == "" {
-			return Draw{}
-		}
 		if text := Resolve(raw, ctx.Slots); text != "" {
 			return Draw{Text: text, Tier: tier, Mine: mineLines[raw]}
 		}

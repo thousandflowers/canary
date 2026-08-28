@@ -65,7 +65,7 @@ func runPreview(cfg config.Config, args []string) int {
 		c := corpus(cfg)
 		lines := c.Lines(c.In("states/"+string(band)+"+"+note+".txt"), c.In("states/"+string(band)+".txt"))
 		if len(lines) > 0 {
-			text = lines[globalRand{}.IntN(len(lines))]
+			text = lines[dice.IntN(len(lines))]
 		}
 	}
 
