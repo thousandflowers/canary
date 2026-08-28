@@ -1,0 +1,6 @@
+# notes/rising — the human is recovering; the score is going down — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+something reversed. i am watching it.
+the needle went the other way.
+whatever that was, it helped.

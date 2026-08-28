@@ -1,0 +1,11 @@
+# mine — untranslated, no gloss. see VOICE.md section 5.
+# LTR scripts only: a right-to-left line shares a status row with other
+# segments and produces bidi corruption nobody can control.
+# If you want to know what a line means, you get up.
+
+es ist Feierabend. für jemanden.
+há saudade no ar. não é minha.
+sisu. sitä ei käännetä.
+dépaysement. quelqu'un l'a trouvé aujourd'hui.
+hygge. jemand hat es warm.
+mono no aware. の名前がある。

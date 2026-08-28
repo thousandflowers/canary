@@ -1,0 +1,4 @@
+# ultra/seventh-session — the seventh session of one day — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+seventh one today. i have stopped counting out loud.

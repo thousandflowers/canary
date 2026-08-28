@@ -1,0 +1,4 @@
+# ultra/four-oh-four — fires at four minutes past four only — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+four minutes past four. nobody is awake but us and the fans.

@@ -1,0 +1,7 @@
+# triggers/uncommitted — detected in code — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+six hundred lines of blind faith.
+git knows nothing. lucky git.
+a rollback here would be picturesque.
+this exists only in your head and the filesystem.

@@ -1,0 +1,5 @@
+# triggers/interrupted — detected in code — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+you always stop him at the third paragraph.
+you two have a communication problem.

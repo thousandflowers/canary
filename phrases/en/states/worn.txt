@@ -1,3 +1,6 @@
 # states/worn — read VOICE.md before adding a line
 # one phrase per line; blank lines and # ignored
 
+the air changed a while ago.
+still here. quieter than before.
+i can hear the pit from where i sit.

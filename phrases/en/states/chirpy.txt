@@ -1,3 +1,6 @@
 # states/chirpy — read VOICE.md before adding a line
 # one phrase per line; blank lines and # ignored
 
+the air is fine. i remain unconvinced.
+everything works. i have seen this before.
+no complaints. i am still looking.

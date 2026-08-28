@@ -1,0 +1,6 @@
+# ephemeral/2026 — auto-expires in 2028, see VOICE.md section 5 — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+this year everything got an assistant. including the birds.
+the models grew again. i stayed the same size.
+a year of agents. someone still has to be the tired one.
