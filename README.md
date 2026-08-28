@@ -2,9 +2,10 @@
 
 [![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
 
-> a toy, on purpose. it is tested (five suites, shellcheck, ubuntu + macOS + fish
-> on every push) and the curve is grounded in published fatigue research, but it
-> reads keystrokes, not you. treat it as a nudge, never as a measurement.
+> a toy, on purpose. it is tested (100% coverage, ubuntu + macOS, the hook driven
+> in a real zsh, bash and fish on every push) and the curve is grounded in
+> published fatigue research, but it reads keystrokes, not you. treat it as a
+> nudge, never as a measurement.
 
 a tiny pixel-art bird that lives in your shell prompt and slowly wilts the
 longer you grind. **for fun** - a nudge to step away, not a science.
@@ -49,6 +50,41 @@ real break, only then, the note moves:
 ♪··   ♫··   ♬··   ♪··                  chirpy, changing note in place
 ♪··   ·♪·   ··♫   ···                  tired, drifting away
 ·     ♪     ·     ♪                    worn, what hesitation is left
+```
+
+## demo
+![canary wilting across a session](assets/demo.gif)
+
+That is `canary demo`: the status row Claude Code shows, the bird under it, and
+one line per state in the slot beside the beak — then quiet, while the note
+moves. The numbers are real in the sense that matters: every pair of minutes
+and turns in it actually scores the band it appears under, and a test says so.
+
+Run it yourself. Nothing in it is a mock-up — same art, same corpus, same
+animation as the installed bird:
+```sh
+canary demo                 # all five states, about twenty seconds
+canary demo --state worn    # one state, four seconds
+```
+
+<details>
+<summary>one state at a time — about 10 KB each</summary>
+
+A single state is an example, not a session, so these carry no status row:
+reporting minutes and turns for one would be inventing a session that is not
+happening.
+
+![fresh](assets/states/fresh.gif)
+![chirpy](assets/states/chirpy.gif)
+![tired](assets/states/tired.gif)
+![worn](assets/states/worn.gif)
+![dead](assets/states/dead.gif)
+
+</details>
+
+Regenerate the recordings with [vhs](https://github.com/charmbracelet/vhs):
+```sh
+vhs demo.tape
 ```
 
 ## why
@@ -237,10 +273,14 @@ blog rather than peer review. hard-coding it would be inventing precision.
 </details>
 
 ## Claude Code statusline
-canary also perches next to caveman's `[CAVEMAN]` badge in Claude Code's status line:
+canary also perches next to caveman's `[CAVEMAN]` badge in Claude Code's status
+line. Claude Code allows one status line command, so canary is appended to
+whatever is already there rather than replacing it, and caveman prints no
+trailing newline — so its badge and canary's stat row share the first row:
 ```
-[CAVEMAN] ▗███▖ tired · 58m · 41t
-          ▐ - ▌>
+[CAVEMAN] tired · 58m · 41t
+▗███▖
+▐ - ▌>  ⌐ sliding. slowly. audibly.
 ```
 Here the bird watches your **coding session**, not your shell. Claude Code pipes its
 session JSON to `canary statusline` on every refresh; it reads
@@ -392,14 +432,15 @@ go build -o canary ./cmd/canary
 bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
 shellcheck -x install.sh uninstall.sh test_install_uninstall.sh
 ```
+CI runs all of it on ubuntu and macOS, and drives the printed hook in a real
+zsh, bash and fish to check the bird actually draws above a prompt.
+
 **Coverage is 100%, and CI fails below it.** Not because a number is the point,
 but because the branches that go untested in a tool like this are exactly the
 ones that matter: the unreadable file, the read-only directory, the
 `settings.json` somebody hand-edited, the transcript with one line longer than
 the window. Making them reachable is also what deleted three copies of the same
 atomic write and several branches that could not happen.
-CI runs all of it on ubuntu + macOS, and drives the printed hook in a real zsh,
-bash and fish to check the bird actually draws above a prompt.
 
 Where things live:
 
