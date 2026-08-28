@@ -63,7 +63,7 @@ func runPreview(cfg config.Config, args []string) int {
 		// The state's own files only. A preview that could wander into lore or
 		// worldly would show a line the state cannot actually produce.
 		c := corpus(cfg)
-		lines := c.Lines("states/"+string(band)+"+"+note+".txt", "states/"+string(band)+".txt")
+		lines := c.Lines(c.In("states/"+string(band)+"+"+note+".txt"), c.In("states/"+string(band)+".txt"))
 		if len(lines) > 0 {
 			text = lines[globalRand{}.IntN(len(lines))]
 		}

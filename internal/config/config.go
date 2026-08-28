@@ -30,6 +30,9 @@ type Config struct {
 	HistoryFile string
 	PhraseState string
 	RecentFile  string
+	BagFile     string
+	SessionFile string
+	GitCache    string
 	PhraseDir   string // empty means "use the embedded corpus"
 
 	// Behaviour
@@ -67,6 +70,12 @@ func FromEnv() Config {
 		HistoryFile: envPath("CANARY_HISTORY_FILE", filepath.Join(dir, "history")),
 		PhraseState: envPath("CANARY_PHRASE_STATE", filepath.Join(dir, "phrase-state")),
 		RecentFile:  envPath("CANARY_RECENT_FILE", filepath.Join(dir, "recent")),
+		// The shuffle state, the sessions seen today, and the last answer git
+		// gave about the working tree. All three exist so the hot path can stay
+		// off the disk and off `git status` on most refreshes.
+		BagFile:     envPath("CANARY_BAG_FILE", filepath.Join(dir, "bag.json")),
+		SessionFile: envPath("CANARY_SESSION_FILE", filepath.Join(dir, "sessions")),
+		GitCache:    envPath("CANARY_GIT_CACHE", filepath.Join(dir, "git-cache")),
 
 		Disabled:     truthy(os.Getenv("CANARY_DISABLED")),
 		Quiet:        truthy(os.Getenv("CANARY_QUIET")),

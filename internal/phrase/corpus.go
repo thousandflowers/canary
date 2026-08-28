@@ -16,25 +16,46 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
-// Corpus is a phrase tree rooted at its `en` directory.
+// DefaultLang is the only language shipped so far. Translations live beside it
+// (phrases/it, phrases/fr) and `mine/` sits outside all of them on purpose:
+// its lines are never translated, which is the whole point of them.
+const DefaultLang = "en"
+
+// EphemeralYears is how many years of topical lines stay readable: this one and
+// the last. A 2026 line stops being drawn in 2028 without anybody deciding
+// anything, and stays in the repo as archive. Maintenance solved structurally.
+const EphemeralYears = 2
+
+// Corpus is a phrase tree. Paths are given relative to its root, and the
+// language directory is part of them — `mine/` has to be reachable from the
+// same reader, and it is deliberately not inside any language.
 type Corpus struct {
 	fsys fs.FS
 	root string
+	lang string
 }
 
 // FromFS wraps the embedded corpus, whose paths start at "phrases".
 func FromFS(fsys fs.FS) Corpus {
-	return Corpus{fsys: fsys, root: "phrases/en"}
+	return Corpus{fsys: fsys, root: "phrases", lang: DefaultLang}
 }
 
 // FromDir wraps a corpus on disk, overriding the embedded one.
 func FromDir(dir string) Corpus {
-	return Corpus{fsys: os.DirFS(dir), root: "en"}
+	return Corpus{fsys: os.DirFS(dir), root: ".", lang: DefaultLang}
 }
+
+// In qualifies a path with the corpus language: In("states/worn.txt") is
+// "en/states/worn.txt". Paths that are already language-free, like mine/, are
+// used as they are.
+func (c Corpus) In(rel string) string { return c.lang + "/" + rel }
 
 // Lines reads every listed file and returns the phrases in them, in order.
 //
@@ -65,6 +86,55 @@ func (c Corpus) Lines(names ...string) []string {
 // empty file must not win a pool and silence the bird.
 func (c Corpus) Has(name string) bool {
 	return len(c.Lines(name)) > 0
+}
+
+// Files lists the .txt files in a directory, sorted, as paths Lines accepts.
+// Sorted because the order feeds a shuffle: an unstable order would change a
+// pool's fingerprint on every run and reshuffle it forever.
+func (c Corpus) Files(dir string) []string {
+	entries, err := fs.ReadDir(c.fsys, path.Join(c.root, dir))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".txt") {
+			out = append(out, path.Join(dir, e.Name()))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// All lists every phrase file in the corpus, sorted. The linter walks this; the
+// bird never does.
+func (c Corpus) All() []string {
+	var out []string
+	fs.WalkDir(c.fsys, c.root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".txt") {
+			rel := strings.TrimPrefix(p, c.root+"/")
+			out = append(out, rel)
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out
+}
+
+// Ephemeral returns the topical files still in date: this year's and last
+// year's, and nothing else. The quarantine is the filename, so a line expires
+// because of what it is called rather than because somebody reviewed it.
+func (c Corpus) Ephemeral(now time.Time) []string {
+	var out []string
+	for y := now.Year() - EphemeralYears + 1; y <= now.Year(); y++ {
+		if f := c.In("ephemeral/" + strconv.Itoa(y) + ".txt"); c.Has(f) {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func clean(line string) string {

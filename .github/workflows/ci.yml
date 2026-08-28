@@ -43,6 +43,11 @@ jobs:
           else
             go test ./...
           fi
+      - name: lint the corpus
+        # The same checks the test suite runs, through the command a contributor
+        # uses. A phrase PR should fail here, visibly, rather than inside a Go
+        # test somebody has to go and read.
+        run: go run ./cmd/canary lint
 
   shellcheck:
     name: shellcheck

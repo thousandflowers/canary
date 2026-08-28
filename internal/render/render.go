@@ -104,6 +104,12 @@ type Status struct {
 	ASCII     bool
 	Columns   int
 	Reserve   int
+
+	// Animate turns the note into a moving one. True only during a real break:
+	// see animate.go, and VOICE.md section 8.
+	Animate bool
+	// Epoch is the clock the frame is read from, in seconds.
+	Epoch int64
 }
 
 // Statusline draws the stat line, the bird and whatever the bird is saying.
@@ -126,6 +132,11 @@ func Statusline(s Status) string {
 	}
 	// A dead bird that has said its line says nothing else — not even the note.
 	if slot == "" && s.Band != fatigue.Dead {
+		if s.Animate {
+			if frame := AnimatedNote(s.Band, s.Epoch, s.ASCII); frame != "" {
+				note = frame
+			}
+		}
 		slot = slotIndent + note
 	}
 
