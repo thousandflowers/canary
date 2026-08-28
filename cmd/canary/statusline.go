@@ -5,6 +5,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"os"
+	"path/filepath"
 	"time"
 
 	canary "github.com/thousandflowers/canary"
@@ -72,7 +73,7 @@ func runStatusline(cfg config.Config) int {
 	}
 
 	band := fatigue.Demote(fatigue.BandFor(score), raw, past.Personal, nights, cfg.DeadAbsolute)
-	text := speak(cfg, band, score, sig.Minutes, now)
+	text, onBreak := speak(cfg, band, score, sig, now, today)
 
 	fmt.Print(render.Statusline(render.Status{
 		Band:      band,
@@ -88,6 +89,9 @@ func runStatusline(cfg config.Config) int {
 		ASCII:     cfg.ASCII,
 		Columns:   cfg.Columns,
 		Reserve:   cfg.ReserveCols,
+		// The note only moves while you are actually away from the keyboard.
+		Animate: onBreak,
+		Epoch:   now.Unix(),
 	}))
 	return 0
 }
@@ -115,27 +119,40 @@ func readStdin() []byte {
 	return b
 }
 
-// speak decides what the bird says, and remembers it.
+// speak decides what the bird says, and remembers it. It also reports whether
+// this refresh caught you on a real break, which is when the note may move.
 //
 // The trigger is a state TRANSITION, never the clock: a line is drawn when the
 // band changes, held for a minute so it can be read across the several refreshes
 // a second Claude Code asks for, and then the bird goes quiet again rather than
 // finding something new to say.
-func speak(cfg config.Config, band fatigue.Band, score, minutes int, now time.Time) string {
+func speak(cfg config.Config, band fatigue.Band, score int, sig session.Signals, now time.Time, today int) (string, bool) {
 	mem := phrase.LoadMemory(cfg.PhraseState)
 
 	gap := -1
 	if mem.TS > 0 {
 		gap = int(now.Unix() - mem.TS)
 	}
+	ctx := phrase.Classify(band, score, mem.Score, mem.Known, gap, now.Hour(), sig.Minutes)
 
-	text, phTS := "", mem.PhTS
+	text, phTS, mineSession := "", mem.PhTS, mem.MineSession
 	if !cfg.Quiet {
 		switch {
 		case string(band) != mem.Band:
-			ctx := phrase.Classify(band, score, mem.Score, mem.Known, gap, now.Hour(), minutes)
-			text = phrase.Pick(corpus(cfg), ctx, globalRand{}, phrase.LoadRecent(cfg.RecentFile))
-			phTS = now.Unix()
+			ctx.Now = now
+			ctx.SessionCount = session.CountToday(cfg.SessionFile, sig.SessionID, today)
+			ctx.MineSeen = mem.MineSession != "" && mem.MineSession == sig.SessionID
+			ctx.Triggers = sig.Triggers(session.DirtyWorktree(sig.Dir, cfg.GitCache, now))
+			ctx.Slots = slotsFor(sig, now)
+
+			bag := phrase.LoadBag(cfg.BagFile)
+			draw := phrase.Pick(corpus(cfg), ctx, globalRand{}, bag, phrase.LoadRecent(cfg.RecentFile))
+			_ = bag.Save()
+
+			text, phTS = draw.Text, now.Unix()
+			if draw.Mine {
+				mineSession = sig.SessionID
+			}
 			if text != "" {
 				_ = phrase.AppendRecent(cfg.RecentFile, text)
 			}
@@ -145,13 +162,28 @@ func speak(cfg config.Config, band fatigue.Band, score, minutes int, now time.Ti
 	}
 
 	_ = phrase.SaveMemory(cfg.PhraseState, phrase.Memory{
-		Band:   string(band),
-		Score:  score,
-		TS:     now.Unix(),
-		PhTS:   phTS,
-		Phrase: text,
+		Band:        string(band),
+		Score:       score,
+		TS:          now.Unix(),
+		PhTS:        phTS,
+		Phrase:      text,
+		MineSession: mineSession,
 	})
-	return text
+	return text, ctx.OnBreak
+}
+
+// slotsFor is what a {template} can be filled with this refresh. Everything
+// here is something the bird already knows; nothing is computed for the sake of
+// a phrase.
+func slotsFor(sig session.Signals, now time.Time) phrase.Slots {
+	slots := phrase.Slots{}.Time(now.Hour()).Count(sig.TopFileCount)
+	if sig.TopFile != "" {
+		slots["file"] = filepath.Base(sig.TopFile)
+	}
+	if sig.Dir != "" {
+		slots["repo"] = filepath.Base(sig.Dir)
+	}
+	return slots
 }
 
 // corpus is the embedded phrase tree, unless a directory overrides it.

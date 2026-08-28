@@ -33,6 +33,15 @@ const TranscriptTail = 2 << 20 // 2 MiB
 // bird on its own.
 const MaxReps = 5
 
+// SameFilePasses is how many times one file has to be touched before the bird
+// notices. Three is ordinary work — read, edit, fix. The fourth pass is the one
+// that starts to look like an argument with a file.
+const SameFilePasses = 4
+
+// MinFilesForNoTests keeps the no-tests trigger off a session that has barely
+// touched anything: two files and no test file is not a finding.
+const MinFilesForNoTests = 3
+
 // Signals is what a mode managed to observe.
 type Signals struct {
 	Minutes int
@@ -46,6 +55,24 @@ type Signals struct {
 	// AvgLen is the mean command length; shell mode only, where there is no
 	// error or repetition signal to lean on instead.
 	AvgLen int
+
+	// SessionID identifies the Claude Code session. It is what "never twice in
+	// a session" is measured against, and what counts the sessions in a day.
+	SessionID string
+	// Dir is the directory Claude Code is working in, which is where the
+	// working-tree check has to run.
+	Dir string
+
+	// The rest are what the triggers are made of. They describe the session,
+	// not the person: `same-file` is a fact about a file being reopened, and
+	// the bird only ever reports facts.
+	TopFile      string // the path touched most often
+	TopFileCount int
+	Files        int  // distinct paths touched
+	HasTests     bool // any of them looked like a test
+	Compacted    bool // the session has been compacted at least once
+	Interrupted  bool // you stopped it mid-answer
+	RepeatedAsk  bool // the same prompt, twice
 }
 
 // statusInput is the slice of Claude Code's session JSON the bird reads.
@@ -54,6 +81,11 @@ type statusInput struct {
 		TotalDurationMS int64 `json:"total_duration_ms"`
 	} `json:"cost"`
 	TranscriptPath string `json:"transcript_path"`
+	SessionID      string `json:"session_id"`
+	CWD            string `json:"cwd"`
+	Workspace      struct {
+		CurrentDir string `json:"current_dir"`
+	} `json:"workspace"`
 }
 
 // IsClaudeCode reports whether the piped bytes are Claude Code's session JSON.
@@ -77,6 +109,11 @@ func FromClaudeCode(input []byte) Signals {
 		return sig
 	}
 	sig.Minutes = int(in.Cost.TotalDurationMS / 60000)
+	sig.SessionID = in.SessionID
+	sig.Dir = in.Workspace.CurrentDir
+	if sig.Dir == "" {
+		sig.Dir = in.CWD
+	}
 
 	f, ok := openTranscript(in.TranscriptPath)
 	if !ok {
@@ -84,8 +121,7 @@ func FromClaudeCode(input []byte) Signals {
 	}
 	defer f.Close()
 
-	turns, errs, reps := scanTranscript(f)
-	sig.Turns, sig.Errors, sig.Reps = turns, errs, reps
+	scanTranscript(f, &sig)
 	return sig
 }
 
@@ -129,10 +165,15 @@ type readCloser struct {
 	io.Closer
 }
 
-// scanTranscript walks the JSONL once, counting all three signals in a single
-// pass. The shell needed four greps over the same buffer; one pass is both
+// scanTranscript walks the JSONL once, filling in everything that can be read
+// from it. The shell needed four greps over the same buffer; one pass is both
 // faster and the only way to see runs of repeated commands in order.
-func scanTranscript(r io.Reader) (turns, errors, reps int) {
+//
+// This is on the hot path — Claude Code redraws the status row several times a
+// second and cancels the previous draw — so everything here is a substring
+// scan over bytes. Unmarshalling every line of a 2 MiB tail would be the one
+// change that makes the bird disappear in long sessions again.
+func scanTranscript(r io.Reader, sig *Signals) {
 	sc := bufio.NewScanner(r)
 	// JSONL lines carry whole tool results and routinely exceed the default
 	// 64KB limit. A truncated line would silently stop the scan.
@@ -141,6 +182,8 @@ func scanTranscript(r io.Reader) (turns, errors, reps int) {
 	var lastCmd string
 	run := 0
 	maxRun := 0
+	files := map[string]int{}
+	asks := map[string]int{}
 
 	for sc.Scan() {
 		line := sc.Bytes()
@@ -151,10 +194,39 @@ func scanTranscript(r io.Reader) (turns, errors, reps int) {
 		// from the other underflowed to zero.
 		if bytes.Contains(line, []byte(`"type":"user"`)) &&
 			!bytes.Contains(line, []byte("tool_result")) {
-			turns++
+			sig.Turns++
+			// The same question asked twice is not a longer session, it is a
+			// stuck one. Compared on a prefix: the tail of a long prompt is
+			// usually where the edits are.
+			if ask := firstAsk(line); ask != "" {
+				asks[ask]++
+				if asks[ask] > 1 {
+					sig.RepeatedAsk = true
+				}
+			}
 		}
 		if bytes.Contains(line, []byte(`"is_error":true`)) {
-			errors++
+			sig.Errors++
+		}
+
+		// A compaction means the session outlived its own context at least
+		// once, which is a fact about how long this has been going on.
+		if bytes.Contains(line, []byte(`"isCompactSummary":true`)) ||
+			bytes.Contains(line, []byte(`"compact_boundary"`)) {
+			sig.Compacted = true
+		}
+		if bytes.Contains(line, []byte("[Request interrupted by")) {
+			sig.Interrupted = true
+		}
+
+		// Every file the session touched, and how often. One file coming back
+		// again and again is the `same-file` trigger; a session with files but
+		// no test file among them is `no-tests`.
+		for _, p := range valuesOf(line, `"file_path":"`) {
+			files[p]++
+			if isTestPath(p) {
+				sig.HasTests = true
+			}
 		}
 
 		// Perseveration: the longest run of the same command back-to-back.
@@ -173,25 +245,79 @@ func scanTranscript(r io.Reader) (turns, errors, reps int) {
 	}
 
 	if maxRun > 1 {
-		reps = maxRun - 1
+		sig.Reps = maxRun - 1
 	}
-	if reps > MaxReps {
-		reps = MaxReps
+	if sig.Reps > MaxReps {
+		sig.Reps = MaxReps
 	}
-	return turns, errors, reps
+
+	sig.Files = len(files)
+	for p, n := range files {
+		// Ties go to the longer path, so the winner is stable rather than
+		// whichever key the map happened to hand back first.
+		if n > sig.TopFileCount || (n == sig.TopFileCount && p > sig.TopFile) {
+			sig.TopFile, sig.TopFileCount = p, n
+		}
+	}
 }
 
-// commandsIn extracts every "command":"..." value on a line, in order.
-func commandsIn(line []byte) []string {
-	const key = `"command":"`
+// isTestPath is deliberately a spelling check, not a language one: the bird is
+// not going to parse anyone's build system from a status line.
+func isTestPath(p string) bool {
+	// Leading separator added so a directory marker matches at the start of a
+	// relative path too: Claude Code reports both "/repo/tests/e2e.py" and
+	// "tests/e2e.py", and only one of them has a slash in front of "tests".
+	p = "/" + strings.TrimPrefix(strings.ToLower(p), "/")
+	for _, mark := range []string{"_test.", "test_", ".test.", "_spec.", ".spec.", "/tests/", "/test/", "/spec/"} {
+		if strings.Contains(p, mark) {
+			return true
+		}
+	}
+	return false
+}
+
+// firstAsk returns a comparable prefix of a human turn's text.
+func firstAsk(line []byte) string {
+	const key = `"content":"`
+	i := bytes.Index(line, []byte(key))
+	if i < 0 {
+		return ""
+	}
+	rest := line[i+len(key):]
+	end := 0
+	for end < len(rest) {
+		if rest[end] == '\\' {
+			end += 2
+			continue
+		}
+		if rest[end] == '"' {
+			break
+		}
+		end++
+	}
+	if end > len(rest) {
+		end = len(rest)
+	}
+	ask := strings.TrimSpace(strings.ToLower(string(rest[:end])))
+	if len(ask) < 12 {
+		return "" // "yes", "go on" and "ok" repeat all day and mean nothing
+	}
+	if len(ask) > 80 {
+		ask = ask[:80]
+	}
+	return ask
+}
+
+// valuesOf extracts every value for a JSON string key on one line, in order.
+func valuesOf(line []byte, key string) []string {
 	var out []string
+	k := []byte(key)
 	for {
-		i := bytes.Index(line, []byte(key))
+		i := bytes.Index(line, k)
 		if i < 0 {
 			return out
 		}
-		line = line[i+len(key):]
-		// The value ends at the first unescaped quote.
+		line = line[i+len(k):]
 		end := 0
 		for end < len(line) {
 			if line[end] == '\\' {
@@ -213,6 +339,9 @@ func commandsIn(line []byte) []string {
 		line = line[end:]
 	}
 }
+
+// commandsIn extracts every "command":"..." value on a line, in order.
+func commandsIn(line []byte) []string { return valuesOf(line, `"command":"`) }
 
 // FromShellState reads the state file the shell-prompt bird writes.
 //

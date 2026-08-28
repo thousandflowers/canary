@@ -29,6 +29,7 @@ const usage = `canary — a pixel-art bird that wilts while you grind.
   canary statusline           the Claude Code status row (reads its JSON on stdin)
   canary preview --state worn --note falling
   canary preview --state fresh --phrase "some candidate line"
+  canary lint [corpus-dir]    check phrases against VOICE.md's rules
   canary init zsh|bash|fish   print the shell hook to source
   canary settings install     wire the status row into Claude Code's settings.json
   canary settings remove      unwire it again
@@ -61,6 +62,8 @@ func main() {
 		os.Exit(runReset(cfg))
 	case "preview":
 		os.Exit(runPreview(cfg, args))
+	case "lint":
+		os.Exit(runLint(cfg, args))
 	case "init":
 		os.Exit(runInit(args))
 	case "settings":

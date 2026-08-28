@@ -27,6 +27,10 @@ type Memory struct {
 	TS     int64 // when that refresh happened
 	PhTS   int64 // when the current phrase was drawn
 	Phrase string
+	// MineSession is the session an untranslated line was last drawn in. The
+	// effect works once; as a standing mode it becomes noise or gets
+	// auto-translated, so it is spent for the rest of that session.
+	MineSession string
 	// Known is false on the very first refresh, where there is no previous
 	// score and so no trend — a different thing from a trend of zero.
 	Known bool
@@ -68,6 +72,10 @@ func LoadMemory(path string) Memory {
 			m.PhTS = atoi64(v)
 		case "ph":
 			m.Phrase = keepClass(v, unicode.IsPrint)
+		case "mine_session":
+			m.MineSession = keepClass(v, func(r rune) bool {
+				return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_'
+			})
 		}
 	}
 	return m
@@ -81,6 +89,7 @@ func SaveMemory(path string, m Memory) error {
 	b.WriteString("ts=" + strconv.FormatInt(m.TS, 10) + "\n")
 	b.WriteString("ph_ts=" + strconv.FormatInt(m.PhTS, 10) + "\n")
 	b.WriteString("ph=" + m.Phrase + "\n")
+	b.WriteString("mine_session=" + m.MineSession + "\n")
 	return writeAtomic(path, b.String())
 }
 

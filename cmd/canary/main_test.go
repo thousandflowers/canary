@@ -201,6 +201,14 @@ func TestPreviewDrawsAnyStateOnDemand(t *testing.T) {
 		t.Error("preview wrote state; it must not")
 	}
 
+	// Not just the art: preview has to reach the corpus. It silently stopped
+	// doing so once, when the phrase paths gained a language prefix, and the
+	// art-only assertion above did not notice.
+	dead, _ := run(t, home, nil, "preview", "--state", "dead")
+	if !strings.Contains(dead, "the canary is quiet.") {
+		t.Errorf("preview drew no line from the corpus:\n%s", dead)
+	}
+
 	custom, _ := run(t, home, nil, "preview", "--state", "fresh", "--phrase", "a candidate line")
 	if !strings.Contains(custom, "a candidate line") {
 		t.Errorf("a contributor's own line was not drawn:\n%s", custom)
@@ -406,5 +414,90 @@ func TestPreviewDrawsEveryBand(t *testing.T) {
 		if !strings.Contains(out, art) {
 			t.Errorf("preview --state %s drew the wrong bird:\n%s", band, out)
 		}
+	}
+}
+
+func TestLintChecksTheCorpusItShips(t *testing.T) {
+	out, code := run(t, t.TempDir(), nil, "lint")
+	if code != 0 {
+		t.Fatalf("the shipped corpus does not pass its own linter (exit %d):\n%s", code, out)
+	}
+	if !strings.Contains(out, "ok") {
+		t.Errorf("lint said nothing:\n%s", out)
+	}
+}
+
+func TestLintReportsABrokenCorpusAndFails(t *testing.T) {
+	// A contributor runs this on a checkout, with no Go toolchain in sight.
+	home := t.TempDir()
+	corpus := filepath.Join(home, "phrases")
+	os.MkdirAll(filepath.Join(corpus, "en", "states"), 0o755)
+	os.WriteFile(filepath.Join(corpus, "en", "states", "fresh.txt"),
+		[]byte("You should take a break!\n"), 0o644)
+
+	out, code := run(t, home, nil, "lint", corpus)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1:\n%s", code, out)
+	}
+	for _, want := range []string{"starts with a capital", `contains "should"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("lint did not report %q:\n%s", want, out)
+		}
+	}
+
+	if _, code := run(t, home, nil, "lint", filepath.Join(home, "nope")); code != 2 {
+		t.Error("a missing directory should be a usage error")
+	}
+}
+
+func TestTheNoteMovesOnlyDuringARealBreak(t *testing.T) {
+	// The only pretty thing this tool does requires you to stop working to see
+	// it, which is the same inversion the rare phrases use.
+	now := time.Now().Unix()
+
+	working := statuslineWith(t, t.TempDir(),
+		fmt.Sprintf("state=fresh\nscore=0\nts=%d\nph_ts=0\nph=\n", now-5))
+	if !strings.Contains(working, "♪") {
+		t.Errorf("a working bird should show the static note:\n%s", working)
+	}
+
+	// Ten minutes since the last refresh: you were not at the keyboard.
+	resting := statuslineWith(t, t.TempDir(),
+		fmt.Sprintf("state=fresh\nscore=0\nts=%d\nph_ts=0\nph=\n", now-600))
+	if strings.Contains(resting, "♪·") || strings.Contains(resting, "·♪") || strings.Contains(resting, "···") {
+		return // an animation frame reached the row
+	}
+	if strings.HasSuffix(strings.TrimRight(resting, "\n"), "♪") {
+		t.Errorf("the note did not move after a ten-minute gap:\n%s", resting)
+	}
+}
+
+func TestTheBagAndSessionCountSurviveARefresh(t *testing.T) {
+	// The shuffle state and the day's sessions are what make "without
+	// replacement" and the seventh-session line possible at all; both live in
+	// files because every refresh is a new process.
+	home := t.TempDir()
+	transcript := filepath.Join(home, "transcript.jsonl")
+	os.WriteFile(transcript, []byte(`{"type":"user","message":{"content":"a first question about the thing"}}`+"\n"), 0o644)
+	payload := fmt.Sprintf(`{"session_id":"abc-123","cwd":%q,"cost":{"total_duration_ms":600000},"transcript_path":%q}`, home, transcript)
+
+	for i := 0; i < 3; i++ {
+		cmd := exec.Command(binary, "statusline")
+		cmd.Env = []string{"HOME=" + home, "PATH=" + os.Getenv("PATH"), "COLUMNS=100"}
+		cmd.Stdin = strings.NewReader(payload)
+		if _, err := cmd.Output(); err != nil {
+			t.Fatalf("statusline: %v", err)
+		}
+	}
+
+	sessions, err := os.ReadFile(filepath.Join(home, ".canary", "sessions"))
+	if err != nil {
+		t.Fatalf("no sessions file: %v", err)
+	}
+	if !strings.Contains(string(sessions), "abc-123") {
+		t.Errorf("the session was not recorded:\n%s", sessions)
+	}
+	if strings.Count(string(sessions), "abc-123") != 1 {
+		t.Errorf("three refreshes counted as more than one session:\n%s", sessions)
 	}
 }

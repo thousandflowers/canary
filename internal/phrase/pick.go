@@ -1,6 +1,8 @@
 package phrase
 
 import (
+	"time"
+
 	"github.com/thousandflowers/canary/internal/fatigue"
 )
 
@@ -9,9 +11,10 @@ import (
 // every transition is a notification, which is the thing canary exists not to
 // be.
 const (
-	SilenceRate  = 65 // percent of eligible transitions that stay quiet
-	UncommonOdds = 8  // 1 in N of the remainder
-	RareOdds     = 40 // 1 in N, and only when the person is recovering
+	SilenceRate  = 65  // percent of eligible transitions that stay quiet
+	UncommonOdds = 8   // 1 in N of the remainder
+	RareOdds     = 40  // 1 in N, and only when the person is recovering
+	UltraOdds    = 300 // 1 in N, and only when its one condition holds
 )
 
 // Thresholds for how long you were away, in seconds.
@@ -29,6 +32,14 @@ const (
 	lateMinutes = 240
 )
 
+// UltraSession is the session of the day that earns its own line.
+const UltraSession = 7
+
+// slotAttempts is how many times a template that cannot be filled is replaced
+// with another draw before the bird gives up and says nothing. A line with a
+// hole in it is never printed.
+const slotAttempts = 3
+
 // Rand is the slice of math/rand/v2 this package needs, so a test can hand it a
 // sequence instead of hoping an unlikely branch shows up.
 type Rand interface{ IntN(n int) int }
@@ -45,6 +56,229 @@ type Context struct {
 	// is one of the two ways to earn a rare line.
 	OnBreak bool
 	Late    bool
+
+	// Triggers are the observations detected in code this refresh, most
+	// interesting first. Adding a file to phrases/triggers/ does nothing
+	// without a detector here — see CONTRIBUTING.
+	Triggers []string
+
+	// Now drives the two things that are functions of the clock rather than of
+	// you: which ephemeral year is still readable, and the ultra conditions.
+	Now time.Time
+	// SessionCount is how many Claude Code sessions today has seen.
+	SessionCount int
+	// MineSeen is whether an untranslated line has already been drawn this
+	// session. The effect works once; as a standing mode it becomes noise.
+	MineSeen bool
+
+	// Slots fill any {template} the drawn line uses.
+	Slots Slots
+}
+
+// Draw is what the bird decided to say, and enough about where it came from for
+// the caller to remember it.
+type Draw struct {
+	Text string
+	Tier string // common, uncommon, rare, ultra — empty when silent
+	Mine bool   // the line was untranslated, so the session has had its one
+}
+
+// Pick returns the line the bird says, or an empty Draw for silence.
+//
+// recent is the last handful of lines already used, and bag is the shuffle
+// state: sampling is without replacement, because a plain random choice over
+// thirty lines repeats within about seven draws and the rarity dies the first
+// time somebody sees the same rare line twice in an evening.
+func Pick(c Corpus, ctx Context, r Rand, bag *Bag, recent []string) Draw {
+	// Dead bypasses the roll on purpose. Its single line, and the silence that
+	// follows it, is the loudest thing this tool says (VOICE.md rule 9).
+	if ctx.Band == fatigue.Dead {
+		lines := c.Lines(c.In("states/dead.txt"))
+		if len(lines) == 0 {
+			return Draw{}
+		}
+		return Draw{Text: lines[0], Tier: "common"}
+	}
+	if r.IntN(100) < SilenceRate {
+		return Draw{}
+	}
+
+	tier, files := poolFor(c, ctx, r)
+	if len(files) == 0 {
+		return Draw{}
+	}
+	lines := c.Lines(files...)
+	if len(lines) == 0 {
+		return Draw{}
+	}
+
+	mineLines := map[string]bool{}
+	if tier == "rare" && mineAllowed(ctx) {
+		for _, l := range c.Lines(c.Files("mine")...) {
+			mineLines[l] = true
+		}
+	}
+
+	// A template whose slots cannot be filled is skipped and another is drawn,
+	// rather than printed with a hole in it.
+	for i := 0; i < slotAttempts; i++ {
+		raw := bag.Draw(poolKey(files), lines, r, recent)
+		if raw == "" {
+			return Draw{}
+		}
+		if text := Resolve(raw, ctx.Slots); text != "" {
+			return Draw{Text: text, Tier: tier, Mine: mineLines[raw]}
+		}
+	}
+	return Draw{}
+}
+
+// poolFor rolls a tier and assembles the files it may draw from.
+//
+// The rolls run rarest first so each tier's odds are its own: checking common
+// first would make every later roll conditional on it and quietly change every
+// number in VOICE.md's table.
+func poolFor(c Corpus, ctx Context, r Rand) (string, []string) {
+	if f := ultraFile(c, ctx); f != "" && r.IntN(UltraOdds) == 0 {
+		return "ultra", []string{f}
+	}
+	if rareAllowed(ctx) && r.IntN(RareOdds) == 0 {
+		return "rare", rarePool(c, ctx)
+	}
+	if r.IntN(UncommonOdds) == 0 {
+		// worn drops lore entirely (VOICE.md §6), so an uncommon roll there
+		// degrades to silence rather than borrowing from a tier it cannot have.
+		if ctx.Band == fatigue.Worn {
+			return "", nil
+		}
+		return "uncommon", uncommonPool(c, ctx)
+	}
+	return "common", commonPool(c, ctx)
+}
+
+// rareAllowed is the gate the whole design hangs on: the rarest lines appear
+// after a real break and in recovering states, never at hour six.
+//
+// An encounter system rewards whatever it takes to trigger an encounter, so in
+// a tool about fatigue, gating rarity on session length would pay people to
+// keep working. Chasing these means resting. That inversion is not optional.
+func rareAllowed(ctx Context) bool {
+	switch ctx.Band {
+	case fatigue.Fresh, fatigue.Chirpy:
+		return true
+	case fatigue.Tired:
+		return ctx.OnBreak || ctx.Note == "rising"
+	default:
+		return false
+	}
+}
+
+// mineAllowed: rare tier only, low states only, never twice in a session.
+func mineAllowed(ctx Context) bool {
+	if ctx.MineSeen {
+		return false
+	}
+	return ctx.Band == fatigue.Fresh || ctx.Band == fatigue.Chirpy
+}
+
+func rarePool(c Corpus, ctx Context) []string {
+	pool := []string{c.In("lore/cage.txt"), c.In("lore/facts.txt")}
+	if ctx.Band != fatigue.Tired {
+		// A tired bird earns lore, not the outside world.
+		pool = append(pool,
+			c.In("worldly/outside.txt"),
+			c.In("worldly/culture.txt"),
+			c.In("worldly/subcultures.txt"))
+	}
+	if mineAllowed(ctx) {
+		pool = append(pool, c.Files("mine")...)
+	}
+	return present(c, pool)
+}
+
+func uncommonPool(c Corpus, ctx Context) []string {
+	// A trigger is the most specific thing the bird can say, so when one is
+	// live it takes the tier rather than sharing it with lore about 1986.
+	for _, t := range ctx.Triggers {
+		if f := c.In("triggers/" + t + ".txt"); c.Has(f) {
+			return []string{f}
+		}
+	}
+	pool := []string{c.In("lore/job.txt"), c.In("lore/detector.txt")}
+	// Ephemeral lines live two years and then stop being read. Uncommon rather
+	// than rare on purpose: a line that expires has to be seen inside its life.
+	pool = append(pool, c.Ephemeral(ctx.Now)...)
+	return present(c, pool)
+}
+
+func commonPool(c Corpus, ctx Context) []string {
+	band := string(ctx.Band)
+	var pool []string
+	// state+note first, plain state as the fallback; an empty file keeps the
+	// search falling through rather than winning and going mute.
+	for _, f := range []string{
+		c.In("states/" + band + "+" + ctx.Note + ".txt"),
+		c.In("states/" + band + ".txt"),
+	} {
+		if c.Has(f) {
+			pool = []string{f}
+			break
+		}
+	}
+	// worn is the actionable band. It says one thing about being worn and does
+	// not chat about the weather or how long you were gone.
+	if ctx.Band != fatigue.Worn {
+		if f := c.In("notes/" + ctx.Note + ".txt"); c.Has(f) {
+			pool = append(pool, f)
+		}
+		if ctx.Return != "" {
+			if f := c.In("returns/" + ctx.Return + ".txt"); c.Has(f) {
+				pool = append(pool, f)
+			}
+		}
+	}
+	if ctx.Late {
+		if f := c.In("time/late.txt"); c.Has(f) {
+			pool = append(pool, f)
+		}
+	}
+	return pool
+}
+
+// ultraFile returns the one file whose condition holds right now, if any.
+//
+// Every condition is read from the clock or from a count the bird already
+// keeps. Nearly nobody meets one, which is the entire point: the people who do
+// take a screenshot.
+func ultraFile(c Corpus, ctx Context) string {
+	var name string
+	switch {
+	case ctx.Now.Month() == time.December && ctx.Now.Day() == 25:
+		name = "christmas"
+	case ctx.Now.Hour() == 4 && ctx.Now.Minute() == 4:
+		name = "four-oh-four"
+	case ctx.SessionCount == UltraSession:
+		name = "seventh-session"
+	default:
+		return ""
+	}
+	if f := c.In("ultra/" + name + ".txt"); c.Has(f) {
+		return f
+	}
+	return ""
+}
+
+// present drops the files that do not exist or hold nothing, so a pool's key —
+// and therefore its shuffle — does not change every time an optional file is
+// added to the repo.
+func present(c Corpus, files []string) []string {
+	out := files[:0:0]
+	for _, f := range files {
+		if c.Has(f) {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // Classify derives the context from the two numbers the bird remembers.
@@ -77,122 +311,6 @@ func Classify(band fatigue.Band, score, prevScore int, hasPrev bool, gap, hour, 
 	ctx.OnBreak = gap >= gapBreak
 	ctx.Late = hour <= lateHour || minutes >= lateMinutes
 	return ctx
-}
-
-// Pick returns the line the bird says, or "" for silence.
-//
-// recent is the last handful of lines already used; a candidate that repeats
-// one gets a single redraw. That is not a shuffle without replacement and does
-// not pretend to be — it removes the one visible defect, the same line twice
-// running, for the cost of a ten-line file.
-func Pick(c Corpus, ctx Context, r Rand, recent []string) string {
-	// Dead bypasses the roll on purpose. Its single line, and the silence that
-	// follows it, is the loudest thing this tool says (VOICE.md rule 9).
-	if ctx.Band == fatigue.Dead {
-		return draw(c.Lines("states/dead.txt"), r)
-	}
-	if r.IntN(100) < SilenceRate {
-		return ""
-	}
-
-	pool := poolFor(c, ctx, tierFor(ctx, r))
-	lines := c.Lines(pool...)
-	if len(lines) == 0 {
-		return ""
-	}
-
-	cand := draw(lines, r)
-	if contains(recent, cand) {
-		cand = draw(lines, r)
-	}
-	return cand
-}
-
-type tier int
-
-const (
-	common tier = iota
-	uncommon
-	rare
-)
-
-// tierFor rolls the tier. Rare is gated on HEALTH, never on time: fresh and
-// chirpy always qualify, tired qualifies only while recovering — coming back
-// from a break, or with a score that is actually falling — and worn never
-// does. An encounter gated on session length would pay you to keep working.
-func tierFor(ctx Context, r Rand) tier {
-	rareOK := false
-	switch ctx.Band {
-	case fatigue.Fresh, fatigue.Chirpy:
-		rareOK = true
-	case fatigue.Tired:
-		rareOK = ctx.OnBreak || ctx.Note == "rising"
-	}
-	if rareOK && r.IntN(RareOdds) == 0 {
-		return rare
-	}
-	if r.IntN(UncommonOdds) == 0 {
-		return uncommon
-	}
-	return common
-}
-
-// poolFor assembles the files a tier may draw from.
-func poolFor(c Corpus, ctx Context, t tier) []string {
-	band := string(ctx.Band)
-	switch t {
-	case uncommon:
-		// worn drops lore entirely (VOICE.md §6), so an uncommon roll there
-		// degrades to silence rather than borrowing from a tier it cannot have.
-		if ctx.Band == fatigue.Worn {
-			return nil
-		}
-		return []string{"lore/job.txt", "lore/detector.txt"}
-
-	case rare:
-		pool := []string{"lore/cage.txt", "lore/facts.txt"}
-		if ctx.Band != fatigue.Tired {
-			pool = append(pool, "worldly/outside.txt", "worldly/culture.txt", "worldly/subcultures.txt")
-		}
-		return pool
-
-	default:
-		var pool []string
-		// state+note first, plain state as the fallback; an empty file keeps
-		// the search falling through rather than winning and going mute.
-		for _, f := range []string{
-			"states/" + band + "+" + ctx.Note + ".txt",
-			"states/" + band + ".txt",
-		} {
-			if c.Has(f) {
-				pool = []string{f}
-				break
-			}
-		}
-		// worn is the actionable band. It says one thing about being worn and
-		// does not chat about the weather or how long you were gone.
-		if ctx.Band != fatigue.Worn {
-			if f := "notes/" + ctx.Note + ".txt"; c.Has(f) {
-				pool = append(pool, f)
-			}
-			if ctx.Return != "" {
-				if f := "returns/" + ctx.Return + ".txt"; c.Has(f) {
-					pool = append(pool, f)
-				}
-			}
-		}
-		if ctx.Late && c.Has("time/late.txt") {
-			pool = append(pool, "time/late.txt")
-		}
-		return pool
-	}
-}
-
-func draw(lines []string, r Rand) string {
-	if len(lines) == 0 {
-		return ""
-	}
-	return lines[r.IntN(len(lines))]
 }
 
 func contains(hay []string, needle string) bool {
