@@ -84,7 +84,7 @@ func Prompt(b fatigue.Band, score int, showScore bool) string {
 		sb.WriteString(body + "\n")
 	}
 	if b == fatigue.Dead {
-		sb.WriteString("  tweet… you look fried. reset with  canary reset\n")
+		sb.WriteString("  tweet… you look fried. reset with canary reset\n")
 	}
 	return sb.String()
 }
