@@ -112,12 +112,13 @@ type Status struct {
 	Epoch int64
 }
 
-// Statusline draws the stat line, the bird and whatever the bird is saying.
+// Bird draws the two rows, and whatever shares the slot beside the beak: the
+// phrase when there is one, the note when there is not, nothing at all when the
+// bird is dead and done talking.
 //
-// No trailing newline, on purpose: Claude Code allows one status line command,
-// so canary is appended to whatever else is there, and a newline at the end
-// would push the next segment onto a row of its own.
-func Statusline(s Status) string {
+// No trailing newline. Everything that draws a bird puts it somewhere with
+// something else on the row.
+func Bird(s Status) string {
 	a := ArtFor(s.Band)
 	tail, note := glyphTail, glyphNote
 	if s.ASCII {
@@ -130,7 +131,6 @@ func Statusline(s Status) string {
 			slot = slotIndent + tail + " " + fit
 		}
 	}
-	// A dead bird that has said its line says nothing else — not even the note.
 	if slot == "" && s.Band != fatigue.Dead {
 		if s.Animate {
 			if frame := AnimatedNote(s.Band, s.Epoch, s.ASCII); frame != "" {
@@ -139,7 +139,15 @@ func Statusline(s Status) string {
 		}
 		slot = slotIndent + note
 	}
+	return fmt.Sprintf("%s\n▐ %s ▌%s%s", a.Top, a.Eye, a.Beak, slot)
+}
 
+// Statusline draws the stat line, the bird and whatever the bird is saying.
+//
+// No trailing newline, on purpose: Claude Code allows one status line command,
+// so canary is appended to whatever else is there, and a newline at the end
+// would push the next segment onto a row of its own.
+func Statusline(s Status) string {
 	var sb strings.Builder
 	if s.ShowScore {
 		fmt.Fprintf(&sb, " %s · %dm · %d%s · %de · d%d · %d\n",
@@ -147,7 +155,7 @@ func Statusline(s Status) string {
 	} else {
 		fmt.Fprintf(&sb, " %s · %dm · %d%s\n", s.Band, s.Minutes, s.Turns, s.StatName)
 	}
-	fmt.Fprintf(&sb, "%s\n▐ %s ▌%s%s", a.Top, a.Eye, a.Beak, slot)
+	sb.WriteString(Bird(s))
 
 	// Escalation, decoupled from the face: the demotion can calm a dead bird to
 	// worn, but a streak is the case you cannot feel, so the count keeps saying

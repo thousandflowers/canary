@@ -16,6 +16,9 @@
    go run ./cmd/canary preview --state fresh --phrase "some candidate line"
    ```
 
+   `go run ./cmd/canary demo` plays your line in its state, in place, next to
+   the beak — which is where it will actually be read.
+
    Editing the files in `phrases/` is enough: `go run` rebuilds, so the copy
    compiled into the binary is the tree you just edited. An *installed* binary
    carries the corpus it shipped with — point that one at your checkout with

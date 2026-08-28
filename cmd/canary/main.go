@@ -27,6 +27,7 @@ const usage = `canary — a pixel-art bird that wilts while you grind.
   canary prompt               the per-prompt draw (your shell hook calls this)
   canary record -- CMD        accrue one command (your shell hook calls this)
   canary statusline           the Claude Code status row (reads its JSON on stdin)
+  canary demo                 watch the bird wilt, in place, with no shell in it
   canary preview --state worn --note falling
   canary preview --state fresh --phrase "some candidate line"
   canary lint [corpus-dir]    check phrases against VOICE.md's rules
@@ -72,6 +73,8 @@ func run(args []string) int {
 		return runReset(cfg)
 	case "preview":
 		return runPreview(cfg, args)
+	case "demo":
+		return runDemo(cfg, args)
 	case "lint":
 		return runLint(cfg, args)
 	case "init":

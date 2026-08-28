@@ -81,6 +81,7 @@ func withStdin(t *testing.T, content string) {
 
 func TestRunDispatchesEverySubcommand(t *testing.T) {
 	isolate(t)
+	noSleep(t) // `demo` is sixteen seconds of animation at its real pace
 	cases := []struct {
 		args []string
 		want int
@@ -92,6 +93,7 @@ func TestRunDispatchesEverySubcommand(t *testing.T) {
 		{[]string{"record", "--", "git status"}, 0},
 		{[]string{"reset"}, 0},
 		{[]string{"preview", "--state", "worn"}, 0},
+		{[]string{"demo"}, 0},
 		{[]string{"lint"}, 0},
 		{[]string{"init", "zsh"}, 0},
 		{[]string{"settings", "install"}, 0},
