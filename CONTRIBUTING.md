@@ -60,6 +60,10 @@ canary lint ./phrases             # just the corpus, no Go toolchain needed
 bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
 ```
 
+A code PR needs coverage to stay at 100% — CI fails below it. If a branch you
+added cannot be reached from a test, that is usually the review telling you the
+branch cannot happen; delete it rather than writing a test that pretends.
+
 A phrase PR needs nothing but the linter. It checks width in cells, capitals,
 emoji, nagging verbs, numbers where the bird would be quoting your own session,
 `you` in `lore/`, duplicates and near-duplicates across the whole tree, `dead.txt`

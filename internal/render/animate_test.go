@@ -109,3 +109,22 @@ func contains(hay, needle string) bool {
 	}
 	return false
 }
+
+func TestANegativeClockStillPicksAFrame(t *testing.T) {
+	// Not a real second, but a clock that disagrees with epoch is a real
+	// machine, and the modulo of a negative number is negative in Go.
+	if got := AnimatedNote(fatigue.Fresh, -1, false); got == "" {
+		t.Error("a negative epoch produced no frame at all")
+	}
+	for _, epoch := range []int64{-1, -7, -100} {
+		frames := Frames(fatigue.Fresh, false)
+		got := AnimatedNote(fatigue.Fresh, epoch, false)
+		var known bool
+		for _, f := range frames {
+			known = known || f == got
+		}
+		if !known {
+			t.Errorf("epoch %d drew %q, which is not one of the frames", epoch, got)
+		}
+	}
+}

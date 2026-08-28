@@ -10,10 +10,11 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/thousandflowers/canary/internal/atomicfile"
 )
 
 // Keep is how many days of peaks survive a prune.
@@ -55,9 +56,6 @@ func Load(path string) ([]Entry, error) {
 
 	f, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	defer f.Close()
@@ -145,19 +143,9 @@ func streak(entries []Entry, today int) int {
 // RecordPeak stores today's RAW peak — pre-debt, so yesterday's debt never
 // compounds into tomorrow's — and prunes the file to the last Keep days.
 //
-// The write is atomic via a temp file in the same directory: Claude Code
-// cancels this process mid-run routinely, and a half-written history is a
-// corrupt one. The shell left `history.tmp.$$` files behind when it was killed
-// between write and rename; a deferred cleanup closes that leak.
+// The write goes through atomicfile: Claude Code cancels this process mid-run
+// routinely, and a half-written history is a corrupt one.
 func RecordPeak(path string, today, raw int) error {
-	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return nil // refuse to follow a link, same as Load
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-
 	entries, err := Load(path)
 	if err != nil {
 		return err
@@ -190,21 +178,5 @@ func RecordPeak(path string, today, raw int) error {
 	for _, e := range merged {
 		fmt.Fprintf(&b, "%d %d\n", e.Day, e.Peak)
 	}
-
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp.*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	// If anything below fails, do not leave the temp file behind.
-	defer os.Remove(tmpName)
-
-	if _, err := tmp.WriteString(b.String()); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return atomicfile.Write(path, []byte(b.String()))
 }

@@ -3,10 +3,11 @@ package phrase
 import (
 	"bufio"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/thousandflowers/canary/internal/atomicfile"
 )
 
 // HoldSeconds is how long a drawn line stays on screen. The statusline redraws
@@ -90,7 +91,7 @@ func SaveMemory(path string, m Memory) error {
 	b.WriteString("ph_ts=" + strconv.FormatInt(m.PhTS, 10) + "\n")
 	b.WriteString("ph=" + m.Phrase + "\n")
 	b.WriteString("mine_session=" + m.MineSession + "\n")
-	return writeAtomic(path, b.String())
+	return atomicfile.Write(path, []byte(b.String()))
 }
 
 // LoadRecent returns the lines the bird has used lately.
@@ -117,36 +118,7 @@ func AppendRecent(path, line string) error {
 	if len(recent) > RecentKeep {
 		recent = recent[len(recent)-RecentKeep:]
 	}
-	return writeAtomic(path, strings.Join(recent, "\n")+"\n")
-}
-
-// writeAtomic writes via a temp file in the same directory. Claude Code cancels
-// this process mid-run routinely; a half-written state file is a corrupt one,
-// and the shell left `*.tmp.$$` litter behind every time it was killed between
-// the write and the rename.
-func writeAtomic(path, content string) error {
-	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return nil // refuse to follow a link
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp.*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-
-	if _, err := tmp.WriteString(content); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return atomicfile.Write(path, []byte(strings.Join(recent, "\n")+"\n"))
 }
 
 // keepClass drops every rune outside the class a field is allowed to hold.

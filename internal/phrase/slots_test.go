@@ -81,3 +81,19 @@ func TestAnUnclosedBraceIsATypoNotASlot(t *testing.T) {
 		t.Errorf("got %q, want the line as written", got)
 	}
 }
+
+func TestAnEmptyAlternativeIsSkipped(t *testing.T) {
+	// `a | | b` is a typo, not an instruction to print nothing.
+	if got := Resolve("{repo} is open |  | this is open", Slots{}); got != "this is open" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestSlotsInStopsAtAnUnclosedBrace(t *testing.T) {
+	if got := SlotsIn("{repo} and then {broken"); len(got) != 1 || got[0] != "repo" {
+		t.Errorf("SlotsIn = %q", got)
+	}
+	if got := SlotsIn("{} is not a name"); len(got) != 0 {
+		t.Errorf("an empty brace pair is not a slot: %q", got)
+	}
+}

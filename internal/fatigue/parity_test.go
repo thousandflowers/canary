@@ -164,3 +164,28 @@ func TestDemote(t *testing.T) {
 		t.Errorf("Demote must leave non-dead bands alone, got %q", got)
 	}
 }
+
+func TestCapClampsBothEnds(t *testing.T) {
+	// The floor exists because a negative multiplier or a hand-edited history
+	// must not produce a bird healthier than fresh.
+	if got := Cap(-5); got != 0 {
+		t.Errorf("Cap(-5) = %d, want 0", got)
+	}
+	if got := Cap(MaxScore + 1); got != MaxScore {
+		t.Errorf("Cap(101) = %d, want %d", got, MaxScore)
+	}
+	if got := Cap(50); got != 50 {
+		t.Errorf("Cap(50) = %d", got)
+	}
+}
+
+func TestTheTwoRawFormulas(t *testing.T) {
+	// Both are straight ports; the point of asserting them is that the terms
+	// stay in the right places.
+	if got := ClaudeCodeRaw(60, 10, 2, 3, 3, 2); got != TimePoints(60)+5+6+6 {
+		t.Errorf("ClaudeCodeRaw = %d", got)
+	}
+	if got := ShellRaw(60, 10, 20); got != TimePoints(60)+5+2 {
+		t.Errorf("ShellRaw = %d", got)
+	}
+}

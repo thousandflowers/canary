@@ -18,10 +18,11 @@ package state
 import (
 	"bufio"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/thousandflowers/canary/internal/atomicfile"
 )
 
 // State is one session's accrued activity.
@@ -118,42 +119,20 @@ func Load(path string) (State, bool) {
 	return s, true
 }
 
-// Save writes the state atomically. Claude Code and impatient people both kill
-// this process mid-run, and a half-written state file is a corrupt one.
+// Save writes the state atomically, refusing to follow a symlink; both of those
+// belong to atomicfile now, because every state file canary keeps needs exactly
+// the same treatment.
 //
 // avg_prompt_len is written for readers that predate this package — the shell
 // statusline computed the average itself and would see zero without it.
 func Save(path string, s State) error {
-	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return nil // refuse to follow a link, same as Load
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-
 	var b strings.Builder
 	b.WriteString("prompt_count=" + strconv.Itoa(s.PromptCount) + "\n")
 	b.WriteString("avg_prompt_len=" + strconv.Itoa(s.AvgLen()) + "\n")
 	b.WriteString("active_seconds=" + strconv.Itoa(s.ActiveSeconds) + "\n")
 	b.WriteString("len_sum=" + strconv.Itoa(s.LenSum) + "\n")
 	b.WriteString("last_active=" + strconv.Itoa(s.LastActive) + "\n")
-
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp.*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // no orphan temp files if anything below fails
-
-	if _, err := tmp.WriteString(b.String()); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return atomicfile.Write(path, []byte(b.String()))
 }
 
 // readInt pulls one integer key out of the file, for the upgrade path above.
