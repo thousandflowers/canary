@@ -28,7 +28,15 @@ late night counts extra. dead bird = go rest.
 
 ## demo
 ![canary wilting across a session](assets/demo.gif)
-regenerate any time with [vhs](https://github.com/charmbracelet/vhs):
+
+That is `canary demo`: the bird walking its five states in place, saying one
+line in each and then going quiet while the note moves. Run it yourself —
+nothing in it is a mock-up, it is the same art, the same corpus and the same
+animation the installed bird uses:
+```sh
+canary demo
+```
+Regenerate the recording with [vhs](https://github.com/charmbracelet/vhs):
 ```sh
 vhs demo.tape
 ```
