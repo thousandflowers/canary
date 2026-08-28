@@ -50,20 +50,24 @@ func runDemo(cfg config.Config, args []string) int {
 
 // play draws each frame over the last one.
 //
-// The cursor goes up two rows and every row is cleared before it is rewritten,
-// because a phrase is not always shorter than the one it replaces. The cursor
+// The cursor goes back up over however many rows the last frame took, and every
+// row is cleared before it is rewritten, because a phrase is not always shorter
+// than the one it replaces. The cursor
 // itself is hidden: it would sit blinking in the middle of the bird.
 func play(w io.Writer, frames []string, tick time.Duration) {
 	fmt.Fprint(w, "\033[2J\033[H\033[?25l") // a clean screen, no cursor
 	defer fmt.Fprint(w, "\033[?25h")
 
-	for i, frame := range frames {
-		if i > 0 {
-			fmt.Fprint(w, "\033[2A") // back up over the two rows just drawn
+	drawn := 0
+	for _, frame := range frames {
+		if drawn > 0 {
+			fmt.Fprintf(w, "\033[%dA", drawn) // back up over the rows just drawn
 		}
-		for _, row := range strings.Split(frame, "\n") {
+		rows := strings.Split(frame, "\n")
+		for _, row := range rows {
 			fmt.Fprint(w, "\033[2K"+row+"\n")
 		}
+		drawn = len(rows)
 		time.Sleep(tick)
 	}
 }
