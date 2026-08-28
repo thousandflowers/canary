@@ -1,0 +1,6 @@
+# notes/falling — the human is going down; the score is going up — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+it is going the way it goes.
+the slope found us.
+the air is thinner than an hour ago.

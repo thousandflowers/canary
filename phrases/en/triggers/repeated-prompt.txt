@@ -1,0 +1,6 @@
+# triggers/repeated-prompt — detected in code — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+third time, same words, such optimism.
+you changed the tone, not the information.
+he didn't understand. you didn't add anything.

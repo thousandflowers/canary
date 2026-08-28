@@ -1,0 +1,4 @@
+# ultra/christmas — fires on december the twenty-fifth only — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+it is the twenty-fifth. the mine is closed and you are not.

@@ -1,0 +1,5 @@
+# triggers/compacted — detected in code — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+you've forgotten this twice already.
+the context is an archive, not a brain.

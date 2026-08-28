@@ -1,0 +1,7 @@
+# triggers/no-tests — detected in code, see internal/signals — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+nine files. zero tests. bold.
+the code works. he says so.
+no test was harmed.
+green because there is nothing red.

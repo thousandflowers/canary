@@ -1,0 +1,6 @@
+# notes/steady — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+nothing moved. that counts as news.
+flat. i will take flat.
+the needle is asleep.

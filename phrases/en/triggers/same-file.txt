@@ -1,0 +1,6 @@
+# triggers/same-file — detected in code — read VOICE.md before adding a line
+# one phrase per line; blank lines and # ignored
+
+sixth pass on that file. attached?
+that file has seen things.
+are you rewriting it or haunting it?
