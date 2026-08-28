@@ -12,12 +12,28 @@ no color. no internet. no runtime dependency. one small binary, UTF-8 block
 art, and your shell.
 
 ## bird
+Five states, five faces. This is the real output, not a picture of it:
+
 ```
- ▗███▖        ▗███▖♪       ▗███▖        ▗▓▓▓▖        ▗░░░▖
-▐ O ▌>       ▐ ^ ▌>       ▐ - ▌>       ▐ ~ ▌>       ░ x ▌v
+ ▗███▖        ▗███▖        ▗███▖        ▗▓▓▓▖        ▗░░░▖
+▐ O ▌>       ▐ ^ ▌>       ▐ - ▌>       ▐ ~ ▌>       ▐ x ▌v
  fresh        chirpy       tired        worn         dead
 ```
-in your real prompt it perches just above the line you type:
+
+On a state change it may say one line, in the slot right of the beak:
+
+```
+▐ O ▌>  ⌐ all is well. i suspect something.
+▐ ^ ▌>  ⌐ the air is fine. i remain unconvinced.
+▐ - ▌>  ⌐ this is the part before the part.
+▐ ~ ▌>  ⌐ still here. quieter than before.
+▐ x ▌v  ⌐ the canary is quiet.
+```
+
+Most of the time it says nothing at all: about two thirds of the moments that
+could produce a line produce silence, on purpose.
+
+In your shell prompt it perches above the line you type:
 ```
  ▗███▖
 ▐ O ▌>
@@ -26,19 +42,13 @@ in your real prompt it perches just above the line you type:
 bird wilts from: time at the shell, how many commands, how long they are.
 late night counts extra. dead bird = go rest.
 
-## demo
-![canary wilting across a session](assets/demo.gif)
-
-That is `canary demo`: the bird walking its five states in place, saying one
-line in each and then going quiet while the note moves. Run it yourself —
-nothing in it is a mock-up, it is the same art, the same corpus and the same
-animation the installed bird uses:
-```sh
-canary demo
+When it is not talking, the slot beside the beak holds a note — and during a
+real break, only then, the note moves:
 ```
-Regenerate the recording with [vhs](https://github.com/charmbracelet/vhs):
-```sh
-vhs demo.tape
+♪··   ·♪·   ·♫·   ·♪·   ♪··   ···      fresh, rising and falling
+♪··   ♫··   ♬··   ♪··                  chirpy, changing note in place
+♪··   ·♪·   ··♫   ···                  tired, drifting away
+·     ♪     ·     ♪                    worn, what hesitation is left
 ```
 
 ## why

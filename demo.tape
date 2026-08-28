@@ -20,7 +20,7 @@ Set Shell "bash"
 # space.
 Set FontSize 22
 Set Width 1240
-Set Height 180
+Set Height 240
 Set Padding 24
 
 # build off camera; the demo itself clears the screen, so the command never
@@ -42,4 +42,4 @@ Show
 # Deliberately a little SHORTER than the demo: the recording has to end while
 # the dead bird is still sitting in its silence, not after the shell prompt has
 # come back underneath it.
-Sleep 15600ms
+Sleep 21500ms
