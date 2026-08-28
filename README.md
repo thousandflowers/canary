@@ -31,7 +31,8 @@ neutral middle of the scale. You are allowed to be tired.
 
 ## it talks. rarely.
 
-On a state change, sometimes, the bird says one line in the slot beside its beak.
+On a state change — and only then — the bird may say one line, in the slot right
+of its beak.
 
 ```
 ▐ O ▌>  ⌐ all is well. i suspect something.
@@ -50,15 +51,60 @@ thing is no longer needed, and it is doing it anyway in a status bar. It is not
 your friend, your coach, or your assistant — there is already an assistant in
 this window. It is a **witness**.
 
+**Sometimes it has noticed something** — 1 in 8, and only when one of these is
+actually true. They are detected in code, not by dropping a file in a directory:
+
+```
+▐ - ▌>  ⌐ sixth pass on that file. attached?        you keep reopening it
+▐ - ▌>  ⌐ nine files. zero tests. bold.             none of them a test
+▐ ~ ▌>  ⌐ six hundred lines of blind faith.         nothing is committed
+▐ - ▌>  ⌐ the context is an archive, not a brain.   the session was compacted
+▐ ^ ▌>  ⌐ third time, same words, such optimism.    you asked that already
+▐ - ▌>  ⌐ you two have a communication problem.     you stopped it mid-answer
+```
+
+**Sometimes it remembers what it used to be** — the same 1 in 8, when nothing
+else is going on:
+
+```
+▐ O ▌>  ⌐ i had a job. it ended in 1986.
+▐ ^ ▌>  ⌐ they replaced me with a device that beeps.
+▐ O ▌>  ⌐ they wanted a number. i gave them a mood.
+▐ ^ ▌>  ⌐ this year everything got an assistant. including the birds.
+```
+
+**And once in a long while it looks out of the cage** — 1 in 40, and only while
+you are recovering:
+
+```
+▐ O ▌>  ⌐ it got dark while we were in here.
+▐ ^ ▌>  ⌐ there are people who race pigeons. there are rankings.
+▐ O ▌>  ⌐ a canary's heart beats about a thousand times a minute.
+▐ ^ ▌>  ⌐ domestic canaries live twelve years. i did the math once.
+▐ O ▌>  ⌐ sisu. sitä ei käännetä.
+```
+
+That last one is not a bug. A handful of lines are in languages that are not
+yours, each carrying a word that does not exist in yours — *saudade*,
+*Feierabend*, *dépaysement*. No gloss, no translation, once per session at most.
+If you want to know what it means, you get up.
+
+**And almost never** — 1 in 300, and only at that exact moment:
+
+```
+▐ - ▌>  ⌐ four minutes past four. nobody is awake but us and the fans.
+▐ ~ ▌>  ⌐ it is the twenty-fifth. the mine is closed and you are not.
+```
+
 <details>
-<summary>the rarer things it can say</summary>
+<summary>the rule that holds all of this up</summary>
 
 | tier | odds | what it draws from |
 |---|---|---|
 | silence | ~65% | the default, and the right behaviour most of the time |
 | common | the rest | the state you are in, which way you are moving, how long you were gone |
-| uncommon | 1 in 8 | a **trigger**, if one is live — otherwise lore, or a line about this year |
-| rare | 1 in 40 | the world outside the cage, and lines in languages that are not yours |
+| uncommon | 1 in 8 | a trigger if one is live, otherwise lore, or a line about this year |
+| rare | 1 in 40 | the world outside the cage, and the untranslated lines |
 | ultra | 1 in 300 | one condition, once: december the twenty-fifth, 04:04, the seventh session of a day |
 
 **The rare lines are gated on recovering, never on hours logged.** An encounter
@@ -67,25 +113,18 @@ fatigue, gating rarity on session length would pay you to keep working. Chasing
 these means resting. There is no counter, no dex, no "12/40 seen" — a collection
 UI turns this into grinding no matter how the gate is written.
 
-Triggers are detected in code, not by dropping a file in a directory:
-
-| trigger | what it noticed |
-|---|---|
-| `same-file` | the fourth pass over one file |
-| `no-tests` | files touched, none of them a test |
-| `uncommitted` | the working tree has changes |
-| `compacted` | the session outlived its own context |
-| `repeated-prompt` | the same question, twice |
-| `interrupted` | you stopped it mid-answer |
-
 Sampling is **without replacement**: the pool is shuffled, consumed in order and
 reshuffled only when it runs out, with the last ten lines still excluded across
 the boundary. A plain random choice over thirty lines repeats inside about seven
 draws, and the rarity dies the first time you see the same line twice in an
 evening.
 
+The topical ones expire on their own: a file named for a year is read for two
+years and then stops being read, without anybody having to decide anything.
+
 Every line lives in [`phrases/en/`](phrases/en) as a plain `.txt` file, one per
-line. Adding one is a pull request with no code in it — the rules, and why they
+line. Adding one is a pull request with no code in it, and `canary lint` answers
+every mechanical question about it before a human looks. The rules, and why they
 are the rules, are in [VOICE.md](VOICE.md).
 
 </details>
@@ -367,6 +406,10 @@ write and several branches that could not happen.
 CI runs on ubuntu and macOS, and drives the printed hook in a real zsh, bash and
 fish to check the bird actually draws above a prompt.
 
+Still open, if you want something to do: translations (`phrases/it`,
+`phrases/fr`, …), more triggers — each needs a detector behind it, which is the
+one thing a phrase PR cannot add — and a rare line for a clean session close.
+
 <details>
 <summary>where things live</summary>
 
@@ -387,21 +430,6 @@ diffs it against the Go, every minute from 0 to 1500. The shell implementation
 is gone; its numbers are still the specification.
 
 </details>
-
-## roadmap
-
-| | | |
-|---|---|---|
-| **v0.6** | shipped | five bands, circadian curve, multi-day debt, shell + Claude Code status line |
-| **v0.7** | shipped | the bird speaks — transition-gated encounters, health-gated rarity, `canary preview` |
-| **v0.8** | shipped | `canary lint` in CI, shuffle without replacement, triggers detected in code |
-| **v0.9** | shipped | notes that move during a real break, `mine/` untranslated lines, `ephemeral/` quarantined by year |
-| **v1.0** | **here** | one Go binary, corpus in `go:embed` — no `jq`, no shell, correct cell widths |
-| next | — | translations, more triggers, a rare line on a clean session close |
-
-1.0 does not mean finished. It means the shape stopped moving: one binary, one
-score, one state format, and a corpus anyone can add a line to without reading
-Go.
 
 ## license
 
