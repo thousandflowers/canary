@@ -20,9 +20,9 @@
    compiled into the binary is the tree you just edited. An *installed* binary
    carries the corpus it shipped with — point that one at your checkout with
    `CANARY_PHRASE_DIR=$PWD/phrases`.
-4. Run `go test ./...`. The corpus linter in `embed_test.go` checks your line
-   against the mechanical parts of the VOICE.md rules, so review is left with
-   the only question that needs a person: is it any good.
+4. Run `canary lint ./phrases` (or `go test ./...`, which runs the same checks).
+   It answers every mechanical question about your line, so review is left with
+   the only one that needs a person: is it any good.
 
 Open the PR against `main` with the line quoted in the description.
 
@@ -56,13 +56,17 @@ Run the suites before opening a PR:
 
 ```sh
 go test ./...                     # everything, including the corpus linter
+canary lint ./phrases             # just the corpus, no Go toolchain needed
 bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
 ```
 
-A phrase PR needs nothing but `go test ./...`: the corpus checks live in
-`embed_test.go` — width in cells, no capitals, no nagging verbs, `dead.txt`
-pinned at one line, no duplicates, and no file named after a band that does not
-exist. That is VOICE.md §6's linter, run as a test rather than as a subcommand.
+A phrase PR needs nothing but the linter. It checks width in cells, capitals,
+emoji, nagging verbs, numbers where the bird would be quoting your own session,
+`you` in `lore/`, duplicates and near-duplicates across the whole tree, `dead.txt`
+pinned at one line, left-to-right only, every `{slot}` fillable and every template
+with a fallback, and files that nothing will ever read — a `triggers/` file with
+no detector, an `ephemeral/` file not named for a year, a state or note that does
+not exist. That is VOICE.md §6, and it runs in CI.
 
 `shellcheck` runs in CI, pinned to 0.10.0, over the installer — the only shell
 left, because a `curl | sh` bootstrap cannot be written in the language it is

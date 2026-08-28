@@ -282,6 +282,38 @@ tool about fatigue must never pay you to keep working. The reasoning, the voice
 rules, and the whole corpus are in [VOICE.md](VOICE.md); how to add a line is in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+| tier | odds | what it draws from |
+|---|---|---|
+| silence | ~65% | the default, and the right behaviour most of the time |
+| common | the rest | the state you are in, the direction you are moving, how long you were away |
+| uncommon | 1 in 8 | a **trigger** if one is live, otherwise lore, or a line about this year |
+| rare | 1 in 40 | the world outside the cage, and the untranslated lines — **only while recovering** |
+| ultra | 1 in 300 | one condition, once: december the twenty-fifth, 04:04, the seventh session of a day |
+
+Sampling is **without replacement**: the pool is shuffled, consumed in order and
+only reshuffled when it runs out, with the last ten lines still excluded across
+the boundary. A plain random choice over thirty lines repeats inside about seven
+draws, and the rarity dies the first time you see the same line twice in an
+evening. The shuffle lives in `~/.canary/bag.json` so it survives the several
+redraws a second Claude Code asks for.
+
+**Triggers** are detected in code, never by adding a file:
+
+| trigger | what it noticed |
+|---|---|
+| `same-file` | the fourth pass over one file |
+| `no-tests` | files touched, none of them a test |
+| `uncommitted` | the working tree has changes (`git status`, cached for a minute) |
+| `compacted` | the session outlived its own context |
+| `repeated-prompt` | the same question, twice |
+| `interrupted` | you stopped it mid-answer |
+
+**The note moves only during a real break.** While you work it is a static `♪`;
+once you have actually been away it drifts, and it slows down as the bird wilts.
+The only pretty thing this tool does requires you to stop working to see it —
+the same inversion the rare lines use. `CANARY_ASCII=1` swaps in frames of the
+same width for terminals that render musical glyphs double.
+
 ```sh
 CANARY_QUIET=1           # bird and note glyph only, no phrases
 CANARY_ASCII=1           # ASCII substitutes for ⌐ and ♪
@@ -290,16 +322,39 @@ CANARY_PHRASE_DIR=...    # corpus root, overriding the copy inside the binary
                          # (~/.canary/phrases is picked up automatically if it exists)
 ```
 
-See a line drawn before you open a PR:
+See a line drawn before you open a PR, and check it against the rules:
 
 ```sh
 canary preview --state worn --note falling
 canary preview --state fresh --phrase "some candidate line"
+canary lint                  # the corpus in the binary
+canary lint ./phrases        # a checkout you are editing
 ```
+
+`canary lint` is VOICE.md §6: width in cells, no leading capital, no emoji, no
+nagging verbs, no numbers where the bird would be quoting your own session, `you`
+banned in `lore/`, duplicates and near-duplicates across the whole tree,
+`dead.txt` pinned at one line, LTR only, every `{slot}` fillable and every
+template with a way out, and no file that nothing will ever read. It runs in CI
+too, so a phrase PR is a three-second yes.
 
 The corpus is compiled into the binary with `go:embed`, so the bird cannot lose
 its voice in transit — the packaging has no chance to forget it. Point
 `CANARY_PHRASE_DIR` at a checkout to iterate on lines without rebuilding.
+
+## what it keeps, and where
+Everything is under `~/.canary`, plain text unless noted, and none of it leaves
+your machine.
+
+| file | what it is |
+|---|---|
+| `canary-state` | this session's counters for the prompt bird |
+| `history` | one `epoch-day peak` line per day, pruned to ten |
+| `phrase-state` | the last band, score and line, so a phrase can hold for a minute |
+| `recent` | the last ten lines said, so none of them comes back too soon |
+| `bag.json` | the shuffle position of each pool |
+| `sessions` | the Claude Code sessions seen today, for the seventh-session line |
+| `git-cache` | the last answer `git status` gave, for up to a minute |
 
 ## uninstall
 ```sh
@@ -344,12 +399,14 @@ Where the bird is going. Shipped is shipped; the rest is intent, not a promise.
 |---|---|---|
 | **v0.6** | released | five bands, circadian curve, multi-day debt, shell + Claude Code statusline |
 | **v0.7** | released | the bird speaks — `phrases/en/**`, transition-gated encounters, health-gated rarity, `canary preview` |
-| **v1.0** | **this release** | one Go binary with the corpus in `go:embed` — no `jq`, no shell, correct cell widths via `runewidth`; the corpus linter runs in CI; one state file per person instead of one per terminal |
-| next | — | true shuffle without replacement; triggers detected in code (`no-tests`, `uncommitted`, `same-file`, `compacted`); notes that move during a real break, and only then; `mine/` untranslated lines; `ephemeral/` quarantined by year |
+| **v0.8** | released here | `canary lint` in CI; true shuffle without replacement; triggers detected in code (`same-file`, `no-tests`, `uncommitted`, `compacted`, `repeated-prompt`, `interrupted`) |
+| **v0.9** | released here | notes that move during a real break, and only then; `mine/` untranslated lines; `ephemeral/` quarantined by year; the ultra tier |
+| **v1.0** | **this release** | one Go binary with the corpus in `go:embed` — no `jq`, no shell, correct cell widths via `runewidth`; one state file per person instead of one per terminal |
+| next | — | translations (`phrases/it`, `phrases/fr`, …); more triggers, each with a detector behind it; a rare line on a clean session close |
 
 1.0 does not mean finished. It means the shape stopped moving: one binary, one
 score, one state format, and a corpus anyone can add a line to without reading
-Go. The design the phrases implement is written down in [VOICE.md](VOICE.md),
+Go. Everything the roadmap listed for v0.8 and v0.9 is in it. The design the phrases implement is written down in [VOICE.md](VOICE.md),
 including the parts not built yet. Two rules there are load-bearing and will not be traded
 away: the rarest lines are gated on **recovering, never on hours logged**, and there
 is no counter, no dex, no "12/40 seen" — a collection UI turns a tool about fatigue
