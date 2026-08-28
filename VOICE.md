@@ -129,6 +129,8 @@ excluded even across reshuffles, or the tail of one cycle reappears at the
 head of the next — the most visible failure mode there is.
 
 Persist the shuffle state in `~/.canary/` so it holds across sessions.
+Implemented in `internal/phrase/bag.go`, keyed by pool and fingerprinted, so
+editing the corpus reshuffles rather than handing out stale positions.
 
 ### The gate that makes this safe
 
@@ -190,16 +192,14 @@ people who do take a screenshot.
 
 ## 6. Linter
 
-Runs in CI as a Go test (`embed_test.go`) over the embedded corpus — the
-checks matter, a subcommand to run them by hand does not, and `go test
-./...` is already what a contributor runs. It exists so you can say yes to a
-PR in three seconds without arguing about tone. Without it you stop merging
-after twenty PRs and the project quietly closes.
+`canary lint` and `go test ./...` run the same code (`internal/lint`), over
+the corpus in the binary or over a directory you are editing. It exists so
+you can say yes to a PR in three seconds without arguing about tone. Without
+it you stop merging after twenty PRs and the project quietly closes.
 
-Implemented today: width in cells, no leading capital, no emoji, the
-blocklist, `you` banned in `lore/`, exact duplicates across the tree,
-`dead.txt` pinned at one line, and filenames that name a real band and note.
-Still to do: near-duplicates (Levenshtein), LTR-only, `{slot}` fallbacks.
+All of the following are enforced. A file that nothing will ever read is
+reported too: a `triggers/` file with no detector, an `ephemeral/` file not
+named for a year, a state or note that does not exist.
 
 - max width in **cells** (`runewidth`), per tier — line 2 allows more
 - blocklist: `should`, `must`, `you need`, `take a break`, `remember to`, `!`
@@ -468,10 +468,11 @@ Notes move **only during a real break**, while the bird recovers. Static
 during work, always. The only pretty thing this tool does requires you to
 stop working to see it.
 
-Frame from the clock (`epoch % 4`), never a counter — the script is
+Frame from the clock (`epoch % 4`), never a counter — the process is
 stateless and can be cancelled mid-run, so any persisted counter drifts.
 Slower cadence for deeper states (`(epoch/3) % 4`); the slowness reads on
-its own.
+its own. Implemented in `internal/render/animate.go`: fresh gets `mixed`,
+chirpy `mutate`, tired `drift`, worn `hesitant`, dead nothing at all.
 
 ```
 drift      ♪··  ·♪·  ··♫  ···
