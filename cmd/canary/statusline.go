@@ -9,6 +9,7 @@ import (
 	"time"
 
 	canary "github.com/thousandflowers/canary"
+	"github.com/thousandflowers/canary/internal/chrono"
 	"github.com/thousandflowers/canary/internal/config"
 	"github.com/thousandflowers/canary/internal/fatigue"
 	"github.com/thousandflowers/canary/internal/history"
@@ -51,7 +52,8 @@ func runStatusline(cfg config.Config) int {
 	} else {
 		raw = fatigue.ClaudeCodeRaw(sig.Minutes, sig.Turns, sig.Errors, sig.Reps, cfg.ErrWeight, cfg.RepWeight)
 	}
-	raw = fatigue.ApplyCircadian(raw, now.Hour(), cfg.NightMult)
+	recordChrono(cfg, now)
+	raw = fatigue.ApplyCircadian(raw, chrono.Shift(now.Hour(), chronoOffset(cfg)), cfg.NightMult)
 
 	today := int(now.Unix() / secondsPerDay)
 	entries, _ := history.Load(cfg.HistoryFile)
