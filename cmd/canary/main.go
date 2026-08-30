@@ -24,6 +24,8 @@ const usage = `canary — a pixel-art bird that wilts while you grind.
   canary                      draw the bird, with its score
   canary score                print the fatigue score, 0-100
   canary reset                start the session over, bird young again
+  canary chrono               what the bird has learned about your body clock
+  canary chrono --bootstrap   seed that from macOS's own screen-time history
   canary prompt               the per-prompt draw (your shell hook calls this)
   canary record -- CMD        accrue one command (your shell hook calls this)
   canary statusline           the Claude Code status row (reads its JSON on stdin)
@@ -71,6 +73,8 @@ func run(args []string) int {
 		return runRecord(cfg, args)
 	case "reset":
 		return runReset(cfg)
+	case "chrono":
+		return runChrono(cfg, args)
 	case "preview":
 		return runPreview(cfg, args)
 	case "demo":
