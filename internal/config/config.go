@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/thousandflowers/canary/internal/fatigue"
 )
@@ -33,6 +34,7 @@ type Config struct {
 	BagFile     string
 	SessionFile string
 	GitCache    string
+	ChronoFile  string
 	PhraseDir   string // empty means "use the embedded corpus"
 
 	// Behaviour
@@ -51,6 +53,13 @@ type Config struct {
 	ErrWeight int
 	RepWeight int
 	DebtMax   int
+
+	// ChronoOffset overrides the learned body-clock rotation. Set is what
+	// separates "pin it to zero, use the textbook curve" from "not set, work it
+	// out yourself" — the two readings a bare int cannot hold apart, and the
+	// difference between disabling the feature and asking for its default.
+	ChronoOffset    int
+	ChronoOffsetSet bool
 }
 
 // FromEnv reads the environment. It never fails: a knob set to nonsense falls
@@ -76,6 +85,9 @@ func FromEnv() Config {
 		BagFile:     envPath("CANARY_BAG_FILE", filepath.Join(dir, "bag.json")),
 		SessionFile: envPath("CANARY_SESSION_FILE", filepath.Join(dir, "sessions")),
 		GitCache:    envPath("CANARY_GIT_CACHE", filepath.Join(dir, "git-cache")),
+		// When you are awake, hour by hour, decayed daily. It is what aims the
+		// time-of-day curve at your body clock instead of a textbook one.
+		ChronoFile: envPath("CANARY_CHRONO_FILE", filepath.Join(dir, "chrono")),
 
 		Disabled:     truthy(os.Getenv("CANARY_DISABLED")),
 		Quiet:        truthy(os.Getenv("CANARY_QUIET")),
@@ -101,6 +113,12 @@ func FromEnv() Config {
 		c.PhraseDir = d
 	} else if d := filepath.Join(dir, "phrases"); isDir(filepath.Join(d, "en")) {
 		c.PhraseDir = d
+	}
+
+	if v, ok := os.LookupEnv("CANARY_CHRONO_OFFSET"); ok {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > -24 && n < 24 {
+			c.ChronoOffset, c.ChronoOffsetSet = n, true
+		}
 	}
 
 	if c.Columns <= 0 {

@@ -218,6 +218,50 @@ a genuine post-lunch dip 13:00–16:00 that is circadian, not caused by lunch; a
 old rule — a flat ×1.3 from 22:00 to 07:00 — penalised you hardest while you
 were at your sharpest and treated 23:00 exactly like 03:00.
 
+**That curve's *shape* is population-wide; its *phase* is yours.** The literature
+above describes someone who gets up around seven. A chronotype shifts by hours
+between people, and for one person it shifts with the season and with whatever
+they are in the middle of — so a curve nailed to the wall clock punishes a
+04:00 sleeper exactly when they are sharpest and forgives them exactly when they
+are falling over. A `CANARY_CHRONO_OFFSET` knob would fix that once and then
+quietly rot, which is what every hand-set calibration does.
+
+So canary measures the phase instead. It keeps 24 counters, one per hour,
+recording that you were awake in that hour, and halves all of them daily — a
+half-life near eleven days, fast enough to follow a schedule that moves,
+slow enough that one late night does not repaint it. The centre of that
+histogram, against the 07:00 riser the curve assumes, is the rotation:
+
+```
+$ canary chrono
+  ▇█▇▄▃▂    ▃▂▄▅▇██▄▃▃▃▅▅▆
+  0     6     12    18
+  hours you are awake in, decayed daily
+
+Your day centres on 19:46 (R=0.26).
+Offset +5h.
+The deepest trough sits at 07:00-09:00 for you, not 02:00-04:00.
+```
+
+It is a **circular mean**, not the longest quiet stretch. Hunting for a run of
+idle hours is the obvious approach and it fails on real people: measured against
+a month of one night owl's actual activity, the longest clean gap was four
+hours, because an irregular sleeper has no single hour they are reliably asleep
+in. The mean uses all twenty-four at once, so a schedule that wobbles by three
+hours a night still has a stable centre. `R` is how concentrated that histogram
+is — 1.0 is one hour, 0 is no schedule at all — and below 0.15, or before a few
+days of evidence, canary says nothing and keeps the textbook curve.
+
+`canary chrono --bootstrap` seeds the histogram from macOS's own screen-time
+history, so it works this week instead of next month. Nothing leaves the machine.
+
+**No temperature sensor, deliberately.** The obvious hardware signal is not
+available and would not help: `powermetrics` refuses to report SMC temperatures
+to a non-root user on Apple Silicon, the keys are in neither `ioreg` nor
+`sysctl`, and a status line that asks for `sudo` on every refresh is not a
+status line. It would also be measuring the wrong thing — a hot laptop at 09:00
+is a render, not a tired person.
+
 **Errors and reps are the best-evidenced signals canary has.** Mental fatigue
 reliably increases error rates *and* perseveration — continuing to repeat an
 action that is not working — which is exactly what `reps` counts. That makes the
@@ -308,13 +352,17 @@ CANARY_DEBT_MAX=30         # cap on yesterday's fatigue carried into today
 CANARY_DEAD_ABSOLUTE=1     # always show the dead bird above 90, streak or not
 CANARY_RESERVE_COLS=0      # cells to book on the bird's row for whatever shares it
 CANARY_PHRASE_DIR=...      # a corpus on disk, overriding the one in the binary
+CANARY_CHRONO_OFFSET=5     # pin the body-clock rotation instead of learning it.
+                           # 0 pins the textbook curve, i.e. turns learning off
+CANARY_CHRONO_FILE=...     # where the awake-hours histogram lives
 ```
 
 Everything canary keeps lives in `~/.canary`, is plain text, and never leaves
 your machine: `canary-state` (this session's counters), `history` (daily peaks),
 `phrase-state` (the last band and line), `recent` (the last ten lines said),
 `bag.json` (where each shuffle is up to), `sessions` (today's session ids),
-`git-cache` (the last answer `git status` gave).
+`git-cache` (the last answer `git status` gave), `chrono` (which hours you
+are awake in).
 
 </details>
 
@@ -358,6 +406,8 @@ Two things changed on purpose:
 ## see it without installing it
 
 ```sh
+canary chrono               # what it has learned about your body clock
+canary chrono --bootstrap   # seed that from macOS's own screen-time history
 canary demo                 # all five states, about twenty seconds
 canary demo --state worn    # one state, four seconds
 canary preview --state worn --note falling

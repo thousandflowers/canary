@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thousandflowers/canary/internal/chrono"
 	"github.com/thousandflowers/canary/internal/config"
 	"github.com/thousandflowers/canary/internal/fatigue"
 	"github.com/thousandflowers/canary/internal/render"
@@ -21,7 +22,8 @@ import (
 // opened dead because of Tuesday, with no way to see why, would read as broken.
 func promptScore(cfg config.Config, st state.State, now time.Time) int {
 	raw := fatigue.ShellRaw(st.ActiveSeconds/60, st.PromptCount, st.AvgLen())
-	return fatigue.ApplyCircadian(raw, now.Hour(), cfg.NightMult)
+	hour := chrono.Shift(now.Hour(), chronoOffset(cfg))
+	return fatigue.ApplyCircadian(raw, hour, cfg.NightMult)
 }
 
 // runPrompt is the per-prompt draw. Silence is cheap and a prompt hook must
@@ -73,8 +75,11 @@ func runRecord(cfg config.Config, args []string) int {
 		return 0 // a bare Enter is not work
 	}
 
+	now := time.Now()
+	recordChrono(cfg, now)
+
 	st, _ := state.Load(cfg.StateFile)
-	st = st.Record(cmd, int(time.Now().Unix()), cfg.IdleThreshold)
+	st = st.Record(cmd, int(now.Unix()), cfg.IdleThreshold)
 	// A failed write costs one command in the count, which is not worth a line
 	// of noise between you and the command you actually typed.
 	_ = state.Save(cfg.StateFile, st)
