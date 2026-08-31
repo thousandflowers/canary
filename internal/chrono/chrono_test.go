@@ -3,6 +3,7 @@ package chrono
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -313,5 +314,94 @@ func TestLoadRefusesASymlink(t *testing.T) {
 func TestLoadMissingFileIsAFreshLog(t *testing.T) {
 	if got := Load(filepath.Join(t.TempDir(), "nope")); got != (Log{}) {
 		t.Errorf("missing file gave %+v, want zero", got)
+	}
+}
+
+// The helpers below are only reachable with input a person had to type by hand
+// or a file that got damaged, which is exactly why they are worth pinning: they
+// are what stands between a bad line in ~/.canary and a bird that will not draw.
+
+func TestNormalizeTakesTheShorterWayRound(t *testing.T) {
+	for _, tc := range []struct{ in, want int }{
+		{0, 0}, {5, 5}, {-5, -5}, {12, 12}, {13, -11}, {-12, 12}, {-13, 11}, {23, -1}, {25, 1},
+	} {
+		if got := normalize(tc.in); got != tc.want {
+			t.Errorf("normalize(%d) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestParseSlotsBoundsWhatItReads(t *testing.T) {
+	// More columns than there are hours: the extras are dropped, not wrapped
+	// round onto the morning.
+	long := make([]string, 40)
+	for i := range long {
+		long[i] = "1"
+	}
+	got := parseSlots(strings.Join(long, ","))
+	if got[0] != 1 || got[23] != 1 {
+		t.Errorf("lost the first 24 values: %v", got)
+	}
+
+	// A number a hand-edit could produce, far past anything the decay can reach.
+	if got := parseSlots("99999999"); got[0] != maxSlot {
+		t.Errorf("unclamped slot %d, want %d", got[0], maxSlot)
+	}
+}
+
+func TestAtoiRefusesAnythingButAPlainNumber(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
+		{"12", 12}, {"  12  ", 12}, {"", 0}, {"-3", 0}, {"1.5", 0}, {"9e9", 0},
+		{"\x1b[31m9", 0},
+		{"99999999999999999999999", 0}, // all digits, still not an int
+	} {
+		if got := atoi(tc.in); got != tc.want {
+			t.Errorf("atoi(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestSeedBoundsWhatItIsGiven(t *testing.T) {
+	var counts [24]int
+	counts[3] = -50     // a negative count is not evidence of anything
+	counts[4] = 1 << 20 // nor is an impossible one
+	counts[5] = 10
+	l := Seed(counts, 10)
+
+	if l.Slots[3] != 0 {
+		t.Errorf("negative count seeded %d", l.Slots[3])
+	}
+	if l.Slots[4] != maxSlot {
+		t.Errorf("unclamped seed %d, want %d", l.Slots[4], maxSlot)
+	}
+	if l.Slots[5] != SteadyState {
+		t.Errorf("every-day hour seeded to %d, want %d", l.Slots[5], SteadyState)
+	}
+}
+
+func TestCenterOfAnEmptyHistogram(t *testing.T) {
+	center, r := centerOf([hoursPerDay]int{})
+	if center != 0 || r != 0 {
+		t.Errorf("centre %.2f r %.2f from nothing, want 0 0", center, r)
+	}
+}
+
+func TestLoadSurvivesAFileItCannotOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chrono")
+	if err := os.WriteFile(path, []byte("hours=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads anything")
+	}
+
+	if got := Load(path); got != (Log{}) {
+		t.Errorf("an unreadable log gave %+v, want zero", got)
 	}
 }
