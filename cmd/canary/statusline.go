@@ -52,7 +52,7 @@ func runStatusline(cfg config.Config) int {
 	} else {
 		raw = fatigue.ClaudeCodeRaw(sig.Minutes, sig.Turns, sig.Errors, sig.Reps, cfg.ErrWeight, cfg.RepWeight)
 	}
-	recordChrono(cfg, now)
+	recordChrono(cfg, now, sig.Turns)
 	raw = fatigue.ApplyCircadian(raw, chrono.Shift(now.Hour(), chronoOffset(cfg)), cfg.NightMult)
 
 	today := int(now.Unix() / secondsPerDay)

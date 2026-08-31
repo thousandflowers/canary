@@ -26,13 +26,17 @@ func chronoOffset(cfg config.Config) int {
 
 // recordChrono notes that you were awake this hour. It writes at most once an
 // hour: chrono.Record says whether anything actually changed, and on all but
-// the first prompt of each hour it has not.
+// the first call of each hour it has not.
+//
+// marker is what tells a person from a repaint — see chrono.Record. The shell
+// hook passes the clock, because it only runs when a command is typed; the
+// status row passes its turn count, because it redraws on its own.
 //
 // Errors are dropped on purpose, as everywhere else on this path. Losing an
 // hour out of a decaying histogram is not worth a line of noise between you and
 // the command you are trying to run.
-func recordChrono(cfg config.Config, now time.Time) {
-	if next, changed := chrono.Record(chrono.Load(cfg.ChronoFile), int(now.Unix()), now.Hour()); changed {
+func recordChrono(cfg config.Config, now time.Time, marker int) {
+	if next, changed := chrono.Record(chrono.Load(cfg.ChronoFile), int(now.Unix()), now.Hour(), marker); changed {
 		_ = chrono.Save(cfg.ChronoFile, next)
 	}
 }

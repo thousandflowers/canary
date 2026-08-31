@@ -144,14 +144,14 @@ func TestRecordCountsAnHourOnlyOnce(t *testing.T) {
 	const day = 20000
 	base := day*24*3600 + 15*3600 // 15:00 UTC on that day
 
-	l, changed := Record(Log{}, base, 15)
+	l, changed := Record(Log{}, base, 15, base)
 	if !changed || l.Slots[15] != Weight {
 		t.Fatalf("first record: slot=%d changed=%v", l.Slots[15], changed)
 	}
 
-	// Nine more commands in the same hour.
+	// Nine more commands in the same hour, each its own activity.
 	for i := 1; i <= 9; i++ {
-		next, changed := Record(l, base+i*60, 15)
+		next, changed := Record(l, base+i*60, 15, base+i*60)
 		if changed {
 			t.Fatalf("command %d in the same hour asked for a write", i)
 		}
@@ -162,15 +162,48 @@ func TestRecordCountsAnHourOnlyOnce(t *testing.T) {
 	}
 
 	// The next hour is news again.
-	l, changed = Record(l, base+3600, 16)
+	l, changed = Record(l, base+3600, 16, base+3600)
 	if !changed || l.Slots[16] != Weight {
 		t.Errorf("next hour: slot=%d changed=%v", l.Slots[16], changed)
 	}
 }
 
+// The case this marker exists for. Claude Code redraws its status row for as
+// long as it is open, so a laptop left running overnight would otherwise teach
+// the histogram that its owner is awake at 03:00 — and that histogram is the
+// one thing the whole estimate rests on.
+func TestRepaintsAllNightRecordNothing(t *testing.T) {
+	const day = 20000
+	evening := day*24*3600 + 22*3600
+
+	// One real turn at 22:00, then the window is left open.
+	l, _ := Record(Log{}, evening, 22, 7)
+
+	for h := 1; h <= 9; h++ { // 23:00 through 07:00, thousands of repaints
+		for i := 0; i < 500; i++ {
+			l, _ = Record(l, evening+h*3600+i, (22+h)%24, 7) // same turn count
+		}
+	}
+
+	if l.Slots[22] == 0 {
+		t.Error("the real turn was lost")
+	}
+	for h := 23; h != 8; h = (h + 1) % 24 {
+		if l.Slots[h] != 0 {
+			t.Errorf("a repaint counted as being awake at %02d:00 (slot %d)", h, l.Slots[h])
+		}
+	}
+
+	// And it must wake up properly when a person comes back.
+	l, changed := Record(l, evening+10*3600, 8, 8)
+	if !changed || l.Slots[8] != Weight {
+		t.Errorf("a real turn after the night: slot=%d changed=%v", l.Slots[8], changed)
+	}
+}
+
 func TestRecordRejectsNonsense(t *testing.T) {
 	for _, tc := range []struct{ unix, hour int }{{0, 3}, {-1, 3}, {1 << 30, -1}, {1 << 30, 24}} {
-		if _, changed := Record(Log{}, tc.unix, tc.hour); changed {
+		if _, changed := Record(Log{}, tc.unix, tc.hour, 1); changed {
 			t.Errorf("Record(%d, %d) accepted", tc.unix, tc.hour)
 		}
 	}
@@ -264,7 +297,7 @@ func TestSeedRejectsNonsense(t *testing.T) {
 func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chrono")
 	want := awakeAt(hoursFrom(9, 12)...)
-	want.Day, want.Hour = 20000, 480000
+	want.Day, want.Hour, want.Seen = 20000, 480000, 42
 
 	if err := Save(path, want); err != nil {
 		t.Fatalf("save: %v", err)
