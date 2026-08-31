@@ -31,8 +31,11 @@ jobs:
         run: |
           if [ -z "$TAP_PUSH_TOKEN" ]; then
             echo "TAP_PUSH_TOKEN is not set: goreleaser cannot push to the Homebrew taps."
-            echo "Create a PAT with repo scope on thousandflowers/homebrew-tap and"
-            echo "thousandflowers/homebrew-canary, then add it as a repository secret."
+            echo "Create a fine-grained PAT scoped to thousandflowers/homebrew-tap alone,"
+            echo "with Contents: read and write, then add it as a repository secret."
+            echo "One tap: .goreleaser.yml pushes only there, and it is what the README"
+            echo "tells users to install from. homebrew-canary is the retired hand-bumped"
+            echo "copy and needs no token."
             exit 1
           fi
       - name: use the notes written for this tag, if there are any
