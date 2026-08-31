@@ -35,10 +35,26 @@ jobs:
             echo "thousandflowers/homebrew-canary, then add it as a repository secret."
             exit 1
           fi
+      - name: use the notes written for this tag, if there are any
+        # goreleaser's generated changelog is a list of commit subjects. That is
+        # the right default, and the wrong thing for a release anybody has to
+        # read. A tag with .github/release-notes/<tag>.md ships that instead;
+        # one without falls back to the generated list, so nothing has to be
+        # written for a patch release that does not need it.
+        id: notes
+        run: |
+          file=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$file" ]; then
+            echo "using $file"
+            echo "args=--release-notes=$file" >> "$GITHUB_OUTPUT"
+          else
+            echo "no notes for ${GITHUB_REF_NAME}; goreleaser will build a changelog"
+            echo "args=" >> "$GITHUB_OUTPUT"
+          fi
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean ${{ steps.notes.outputs.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
