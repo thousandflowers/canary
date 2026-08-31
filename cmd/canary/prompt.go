@@ -76,7 +76,7 @@ func runRecord(cfg config.Config, args []string) int {
 	}
 
 	now := time.Now()
-	recordChrono(cfg, now)
+	recordChrono(cfg, now, int(now.Unix()))
 
 	st, _ := state.Load(cfg.StateFile)
 	st = st.Record(cmd, int(now.Unix()), cfg.IdleThreshold)
