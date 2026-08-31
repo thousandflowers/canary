@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -110,31 +109,32 @@ func clockHour(h float64) string {
 // exactly that evidence, already collected.
 const knowledgeDB = "Library/Application Support/Knowledge/knowledgeC.db"
 
-// hourCountsQuery counts the distinct day-hours in which any app was in use.
-// Distinct day-hours, not events: the question is which hours you are awake in,
-// and an afternoon of heavy app-switching is one afternoon, not four hundred.
+// knowledgeQuery counts the distinct day-hours in which any app was in use,
+// and how many distinct days that covers. Distinct day-hours, not events: the
+// question is which hours you are awake in, and an afternoon of heavy
+// app-switching is one afternoon, not four hundred.
 //
-// ZSTARTDATE is Core Data time — seconds since 2001-01-01 — hence the constant.
-// The stream is /app/usage; /app/inFocus is the iOS spelling and matches
-// nothing here.
-const hourCountsQuery = `SELECT h, COUNT(*) FROM (
+// Both answers come back from one invocation, tagged 'h' or 'd', because two
+// calls meant two failure paths for one question. ZSTARTDATE is Core Data time
+// — seconds since 2001-01-01 — hence the constant. The stream is /app/usage;
+// /app/inFocus is the iOS spelling and matches nothing on a Mac.
+const knowledgeQuery = `
+CREATE TEMP VIEW awake AS
   SELECT DISTINCT
-    strftime('%Y%m%d%H', datetime(ZSTARTDATE+978307200,'unixepoch','localtime')) AS dh,
+    date(datetime(ZSTARTDATE+978307200,'unixepoch','localtime')) AS d,
     CAST(strftime('%H', datetime(ZSTARTDATE+978307200,'unixepoch','localtime')) AS INTEGER) AS h
-  FROM ZOBJECT WHERE ZSTREAMNAME='/app/usage' AND ZSTARTDATE IS NOT NULL
-) GROUP BY h ORDER BY h;`
-
-const dayCountQuery = `SELECT COUNT(DISTINCT date(datetime(ZSTARTDATE+978307200,'unixepoch','localtime')))
-  FROM ZOBJECT WHERE ZSTREAMNAME='/app/usage' AND ZSTARTDATE IS NOT NULL;`
+  FROM ZOBJECT WHERE ZSTREAMNAME='/app/usage' AND ZSTARTDATE IS NOT NULL;
+SELECT 'h', h, COUNT(*) FROM awake GROUP BY h ORDER BY h;
+SELECT 'd', COUNT(DISTINCT d), 0 FROM awake;`
 
 func runChronoBootstrap(cfg config.Config) int {
-	if runtime.GOOS != "darwin" {
-		fmt.Fprintln(os.Stderr, "canary chrono --bootstrap: macOS only; elsewhere the log fills itself in over a few weeks")
-		return 1
-	}
+	// No GOOS check: the history simply is not there off macOS, and the missing
+	// file says so more usefully than a platform test would. It also keeps the
+	// whole path reachable from a test on any machine.
 	db := filepath.Join(cfg.Home, knowledgeDB)
 	if _, err := os.Stat(db); err != nil {
 		fmt.Fprintf(os.Stderr, "canary chrono --bootstrap: no screen-time history at %s\n", db)
+		fmt.Fprintln(os.Stderr, "macOS keeps it; elsewhere the log fills itself in over a few weeks of use.")
 		return 1
 	}
 
@@ -169,31 +169,38 @@ func runChronoBootstrap(cfg config.Config) int {
 // a cgo dependency for that is a bad trade on a binary that otherwise builds
 // anywhere.
 func knowledgeHours(db string) (counts [24]int, days int, err error) {
-	rows, err := sqlite(db, hourCountsQuery)
+	rows, err := sqlite(db, knowledgeQuery)
 	if err != nil {
 		return counts, 0, err
 	}
-	for _, line := range rows {
-		h, n, found := strings.Cut(line, "|")
-		if !found {
-			continue
-		}
-		hour, err1 := strconv.Atoi(strings.TrimSpace(h))
-		count, err2 := strconv.Atoi(strings.TrimSpace(n))
-		if err1 != nil || err2 != nil || hour < 0 || hour > 23 {
-			continue
-		}
-		counts[hour] = count
-	}
-
-	out, err := sqlite(db, dayCountQuery)
-	if err != nil {
-		return counts, 0, err
-	}
-	if len(out) > 0 {
-		days, _ = strconv.Atoi(strings.TrimSpace(out[0]))
-	}
+	counts, days = parseKnowledge(rows)
 	return counts, days, nil
+}
+
+// parseKnowledge reads the tagged rows the query emits. Split out from the
+// call above so the rows it must survive — a truncated line, a value that is
+// not a number, an hour outside the clock — can be handed to it directly.
+// sqlite3 will not produce those; a future edit to the query, or a database
+// with something unexpected in it, might.
+func parseKnowledge(rows []string) (counts [24]int, days int) {
+	for _, line := range rows {
+		f := strings.Split(line, "|")
+		if len(f) != 3 {
+			continue
+		}
+		key, err1 := strconv.Atoi(strings.TrimSpace(f[1]))
+		n, err2 := strconv.Atoi(strings.TrimSpace(f[2]))
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		switch {
+		case f[0] == "d":
+			days = key
+		case f[0] == "h" && key >= 0 && key < 24:
+			counts[key] = n
+		}
+	}
+	return counts, days
 }
 
 func sqlite(db, query string) ([]string, error) {

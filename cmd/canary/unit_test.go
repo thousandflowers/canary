@@ -92,6 +92,7 @@ func TestRunDispatchesEverySubcommand(t *testing.T) {
 		{[]string{"prompt"}, 0},
 		{[]string{"record", "--", "git status"}, 0},
 		{[]string{"reset"}, 0},
+		{[]string{"chrono"}, 0},
 		{[]string{"preview", "--state", "worn"}, 0},
 		{[]string{"demo"}, 0},
 		{[]string{"lint"}, 0},
