@@ -105,6 +105,13 @@ type Log struct {
 	Slots [hoursPerDay]int
 	Day   int
 	Hour  int
+	// Seen identifies the activity that last counted. Claude Code repaints its
+	// status row several times a second for as long as it is open — including
+	// all night with nobody at the keyboard — and a repaint is not a person.
+	// Without this the histogram learns that you are awake at 04:00 because you
+	// left a window open, which poisons the one signal the whole estimate rests
+	// on.
+	Seen int
 }
 
 // Load reads the log. A missing file is a first run, not an error, and neither
@@ -139,6 +146,8 @@ func Load(path string) Log {
 			l.Day = atoi(v)
 		case "hour":
 			l.Hour = atoi(v)
+		case "seen":
+			l.Seen = atoi(v)
 		}
 	}
 	return l
@@ -156,6 +165,7 @@ func Save(path string, l Log) error {
 	b.WriteString("hours=" + strings.Join(parts, ",") + "\n")
 	b.WriteString("day=" + strconv.Itoa(l.Day) + "\n")
 	b.WriteString("hour=" + strconv.Itoa(l.Hour) + "\n")
+	b.WriteString("seen=" + strconv.Itoa(l.Seen) + "\n")
 	return atomicfile.Write(path, []byte(b.String()))
 }
 
@@ -173,7 +183,7 @@ func Decayed(l Log, day int) Log {
 		return l
 	}
 
-	next := Log{Day: day, Hour: l.Hour}
+	next := Log{Day: day, Hour: l.Hour, Seen: l.Seen}
 	if elapsed >= deadDays {
 		return next // everything has decayed to nothing; start clean
 	}
@@ -191,26 +201,39 @@ func Decayed(l Log, day int) Log {
 // and this package does not. It decays first, so a log opened after a week away
 // is aged before it is added to rather than after.
 //
+// marker identifies the activity that prompted the call, and is what separates
+// a person from a repaint. Pass something that only moves when someone does: a
+// turn count from a status row that redraws on a timer, or the timestamp itself
+// from a shell hook that only fires when a command is typed. A call whose
+// marker has not changed keeps the bookkeeping and records nothing.
+//
 // The second return says whether anything changed, which is what lets the
-// caller skip the write on the overwhelming majority of prompts: you type many
-// commands in an hour, and only the first of them is news.
-func Record(l Log, unix, localHour int) (Log, bool) {
+// caller skip the write on the overwhelming majority of calls: you type many
+// commands in an hour, the status row redraws thousands of times, and only the
+// first of each hour is news.
+func Record(l Log, unix, localHour, marker int) (Log, bool) {
 	if unix <= 0 || localHour < 0 || localHour >= hoursPerDay {
 		return l, false
 	}
 	hour := unix / secondsPerHour
 	next := Decayed(l, unix/secondsPerDay)
+	next.Hour = hour
 
-	// A repeat inside the same hour with no decay to persist is the common
-	// case, and it must not cost a write on every prompt.
-	if next.Hour == hour && next == l {
+	// One count per hour: a burst of three hundred commands at 15:00 is one
+	// afternoon of being awake at 15:00, and letting it outvote a quiet week
+	// would read intensity as if it were schedule. So the marker is only
+	// consulted at an hour boundary — the only moment it can change anything —
+	// which is also what keeps a busy hour down to a single write.
+	if l.Hour != hour && marker != l.Seen {
+		next.Seen = marker
+		if next.Slots[localHour] < maxSlot {
+			next.Slots[localHour] += Weight
+		}
+	}
+
+	if next == l {
 		return l, false
 	}
-
-	if next.Hour != hour && next.Slots[localHour] < maxSlot {
-		next.Slots[localHour] += Weight
-	}
-	next.Hour = hour
 	return next, true
 }
 
