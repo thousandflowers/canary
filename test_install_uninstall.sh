@@ -212,4 +212,39 @@ else
   echo "skip — jq not installed, statusline wiring checks skipped"
 fi
 
+# --- the animation stays out of anything that is not a terminal -------------
+# A pipe, a CI log or a redirect must get words, not cursor movement. This is
+# the regression that turns a build log into a wall of ^[[2A.
+H=$(newhome)
+out=$(env HOME="$H" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$H/.claude" \
+      GOPATH="$GOPATH_REAL" GOCACHE="$GOCACHE_REAL" GOMODCACHE="$GOMODCACHE_REAL" \
+      sh "$HERE/install.sh" 2>&1)
+case $out in
+  *"$(printf '\033')"*) echo "FAIL [install-plain-no-ansi]: escape codes with no terminal attached"; fails=$((fails+1)) ;;
+esac
+assert_has "install-plain-speaks" "$out" "canary:"
+
+# --- the installer draws the same bird, and sings the same notes ------------
+# install.sh cannot ask the binary for either: on the curl path there is no
+# binary yet when the first frame goes up. So both are written twice, and this
+# is what keeps the copies honest.
+fresh_art=$(sed -n '/^func ArtFor/,/^}/p' "$HERE/internal/render/render.go" \
+            | sed -n '/default:/,/}/p' | grep -o '"[^"]*"' | tr -d '"')
+installer=$(cat "$HERE/install.sh")
+for glyph in $fresh_art; do
+  case $installer in
+    *"$glyph"*) ;;
+    *) echo "FAIL [install-art-parity]: ArtFor draws '$glyph' for fresh, install.sh does not"; fails=$((fails+1)) ;;
+  esac
+done
+
+# render.Frames(Fresh) is the pattern the installer sings while it works
+mixed=$(grep 'mixedFrames *=' "$HERE/internal/render/animate.go" | grep -o '"[^"]*"' | tr -d '"')
+for f in $mixed; do
+  case $installer in
+    *"$f"*) ;;
+    *) echo "FAIL [install-note-parity]: fresh animates '$f', install.sh does not"; fails=$((fails+1)) ;;
+  esac
+done
+
 if [ "$fails" -eq 0 ]; then echo "ok — all install/uninstall checks passed"; else echo "$fails check(s) failed"; exit 1; fi

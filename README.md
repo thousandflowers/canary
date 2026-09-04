@@ -385,6 +385,13 @@ curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install
 zsh, bash and fish. macOS and Linux, amd64 and arm64. A UTF-8 terminal.
 `sh uninstall.sh` takes back the rc lines, the status line and `~/.canary`.
 
+In a terminal the installer names what it found — platform, shell, where the
+binary is going — and the bird sings while it works, the same note pattern a
+fresh bird animates with during a break. The last word is the binary's own: it
+runs what it just installed and lets it draw itself with a line from the corpus
+compiled into it. Into a pipe, a CI log or with `NO_COLOR` or `CANARY_NO_ANIM`
+set, it is the same words with no cursor games.
+
 <details>
 <summary>upgrading from 0.x</summary>
 
