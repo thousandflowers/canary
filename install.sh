@@ -155,31 +155,153 @@ ensure_path() {
   fi
 }
 
+
+# --- the bird, drawn from here ----------------------------------------------
+# The installer cannot ask the binary to draw: on the curl path there is no
+# binary yet when the first frame goes up. Same fresh art as internal/render,
+# and test_install_uninstall.sh fails if the two ever drift.
+BIRD_TOP='▗███▖'
+BIRD_BODY='▐ O ▌>'
+
+# The note patterns are render.Frames(Fresh): rises, hesitates, falls. Every
+# frame is the same width on purpose — a shorter one would shuffle the label
+# sideways on every tick.
+#
+# In the status row notes move only during a real break (VOICE.md section 8),
+# because nothing pretty there should be earnable by grinding. An install is
+# not the status row: it happens once, it is already an interruption, and the
+# bird has something to be pleased about.
+NOTES='♪·· ·♪· ·♫· ·♪· ♪·· ···'
+if [ -n "${CANARY_ASCII:-}" ]; then
+  NOTES='o.. .o. .O. .o. o.. ...'
+fi
+
+# Animate only when someone is watching. A pipe, a CI log, NO_COLOR or a dumb
+# terminal get the same words with no cursor games — the bird singing is a
+# courtesy, never the way information is delivered.
+ANIM=0
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ -z "${CANARY_NO_ANIM:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+  ANIM=1
+fi
+
+# Fractional sleep is not POSIX. Busybox sleep takes whole seconds only, and a
+# one-second frame is not an animation, it is a slideshow — so the frames just
+# run flat out there instead.
+NAP=0
+if sleep 0.05 2>/dev/null; then NAP=1; fi
+nap() { if [ "$NAP" = 1 ]; then sleep "$1"; fi; }
+
+cursor_hide() { if [ "$ANIM" = 1 ]; then printf '\033[?25l'; fi; }
+cursor_show() { if [ "$ANIM" = 1 ]; then printf '\033[?25h'; fi; }
+
+# Two rows, the note and the label in the slot beside the beak — the same slot
+# the bird speaks from once it is installed.
+frame() {
+  printf ' %s\n%s  %s %s\033[K\n' "$BIRD_TOP" "$BIRD_BODY" "$1" "$2"
+}
+rewind() { printf '\033[2A'; }
+
+# The work runs in the background and the bird sings until it is done. Step
+# output goes to a log and is shown underneath afterwards: a build scrolling
+# through the animation is neither a build log nor an animation.
+stage() {
+  label=$1
+  shift
+  if [ "$ANIM" != 1 ]; then
+    printf 'canary: %s\n' "$label"
+    "$@"
+    return $?
+  fi
+  ( "$@" >>"$STEP_LOG" 2>&1 ) &
+  pid=$!
+  notes=$NOTES
+  i=0
+  # A step can finish before it has been seen. Six frames is one whole phrase
+  # of the pattern, which is the least that reads as singing.
+  while kill -0 "$pid" 2>/dev/null || [ "$i" -lt 6 ]; do
+    frame "${notes%% *}" "$label"
+    # rotate: first frame to the back, no arrays and no eval
+    notes="${notes#* } ${notes%% *}"
+    rewind
+    i=$((i + 1))
+    nap 0.11
+  done
+  st=0
+  wait "$pid" || st=$?
+  frame "${NOTES%% *}" "$label"
+  rewind
+  return "$st"
+}
+
+# --- what this machine actually is ------------------------------------------
+tilde() { case $1 in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
+
+wire_shell() {
+  ensure_path "$shell_name" "$rc"
+  if [ -n "$hook" ]; then
+    ensure_line "$rc" "$hook"
+    if [ "$shell_name" = bash ]; then ensure_bash_chain; fi
+  else
+    echo "canary: no prompt hook for $shell_name — \`canary\` still works by hand"
+  fi
+}
+
+# Claude Code's status line. No jq: the binary edits the JSON itself, and a
+# machine without Claude Code is not a failed install.
+install_statusline() { "$CANARY_BIN" settings install || true; }
+
 main() {
   info=$(detect_rc)
   shell_name=${info%%|*}
   rc=${info#*|}
-
-  install_binary
 
   case "$shell_name" in
     fish) hook="\"$CANARY_BIN\" init fish | source" ;;
     zsh|bash) hook="eval \"\$(\"$CANARY_BIN\" init $shell_name)\"" ;;
     *) hook="" ;;
   esac
-  ensure_path "$shell_name" "$rc"
-  if [ -n "$hook" ]; then
-    ensure_line "$rc" "$hook"
-    [ "$shell_name" = bash ] && ensure_bash_chain
-  else
-    echo "canary: no prompt hook for $shell_name — \`canary\` still works by hand"
+
+  # What this machine actually is, before anything is touched. The curl path
+  # runs sight-unseen; naming what was detected is the least it can do.
+  if [ "$ANIM" = 1 ]; then
+    plat=$(platform 2>/dev/null) || plat="source"
+    printf '\ncanary — a retired safety instrument\n\n'
+    printf '  platform  %s\n' "$plat"
+    printf '  shell     %s → %s\n' "$shell_name" "$(tilde "$rc")"
+    printf '  binary    %s\n\n' "$(tilde "$CANARY_BIN")"
   fi
 
-  # Claude Code's status line. No jq: the binary edits the JSON itself.
-  "$CANARY_BIN" settings install || true
+  STEP_LOG=$(mktemp "${TMPDIR:-/tmp}/canary-install.XXXXXX")
+  # An interrupted install must not leave the terminal without a cursor.
+  trap 'cursor_show; rm -f "$STEP_LOG"' EXIT
+  trap 'cursor_show; rm -f "$STEP_LOG"; exit 130' INT TERM
+  cursor_hide
 
-  printf '\n ▗███▖\n▐ O ▌>   canary installed for %s\n\n' "$shell_name"
-  echo "open a new shell (or: . $rc) to meet your bird."
+  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/go.mod" ] && command -v go >/dev/null 2>&1; then
+    fetch_label="building from source"
+  else
+    fetch_label="fetching the binary"
+  fi
+  stage "$fetch_label" install_binary || { cursor_show; cat "$STEP_LOG" >&2; return 1; }
+  stage "wiring $shell_name" wire_shell || { cursor_show; cat "$STEP_LOG" >&2; return 1; }
+  stage "claude code's status line" install_statusline
+
+  cursor_show
+  if [ "$ANIM" = 1 ]; then
+    printf '\033[2B'
+    # Everything the steps said, under the bird instead of scrolling through it.
+    sed 's/^/  /' "$STEP_LOG"
+  fi
+
+  # The last word is the bird's own: the real binary it just installed, drawing
+  # itself with a phrase from the corpus compiled into it. Fresh, because that
+  # is the band a bird is in when the air is fine and nothing has gone wrong
+  # yet. It doubles as a smoke test — a binary that cannot run cannot sign off.
+  printf '\n'
+  if ! env COLUMNS="${COLUMNS:-80}" "$CANARY_BIN" preview --state fresh 2>/dev/null; then
+    printf ' ▗███▖\n▐ O ▌>   canary installed for %s\n' "$shell_name"
+  fi
+  printf '\nopen a new shell (or: . %s) to meet it.\n' "$(tilde "$rc")"
 }
 
 main "$@"
