@@ -51,12 +51,12 @@ changelog:
 # on resolving the old shell formula and nobody would ever be upgraded. Move
 # when the deprecation actually bites, not before.
 brews:
-  # One tap, on purpose. canary also has a thousandflowers/homebrew-canary tap,
-  # bumped by hand until now, and the two drifted: pointing goreleaser at both
-  # makes it build two artifacts called canary.rb and warn that publishing them
-  # may fail. `brew install thousandflowers/tap/canary` is what the README says
-  # and what this bumps; the other tap should redirect here rather than be a
-  # second copy nobody remembers to update.
+  # One tap, on purpose. thousandflowers/homebrew-canary was a second copy
+  # nobody remembered to update, and it served the 0.7.0 shell scripts for
+  # months after canary became a binary. It now carries a tap_migrations.json
+  # pointing here instead, so there is one formula and one place to bump.
+  # `brew install thousandflowers/tap/canary` is what the README says and what
+  # this pushes.
   - repository:
       owner: thousandflowers
       name: homebrew-tap
