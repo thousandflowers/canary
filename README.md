@@ -1,5 +1,9 @@
 # canary
 
+[![release](https://img.shields.io/github/v/release/thousandflowers/canary?color=555&label=release)](https://github.com/thousandflowers/canary/releases)
+[![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-555)](LICENSE)
+
 **a pixel-art bird that wilts while you work.**
 it perches above your shell prompt and inside Claude Code's status line, watches
 how long you have been at it, and slowly falls apart.
@@ -13,6 +17,23 @@ brew install thousandflowers/tap/canary
 eval "$(canary init zsh)"    # bash and fish too
 canary settings install      # the Claude Code half
 ```
+
+zsh, bash or fish, macOS or Linux, a UTF-8 terminal. Want only the Claude Code
+bird? Skip the second line. Want it gone? `sh uninstall.sh` takes back the
+rc lines, the status line and `~/.canary`.
+
+Three things that are not obvious from a screenshot:
+
+- **The five birds are a real scale.** They are the five labelled anchors of the
+  Karolinska Sleepiness Scale, and **worn — KSS 7 — is the one that means stop.**
+  Tired is the neutral midpoint. [The arithmetic, and the papers under
+  it.](#the-number-behind-the-face)
+- **It is mostly quiet.** About two thirds of the moments it could speak, it says
+  nothing — and the one animation it has only plays once you have actually
+  stopped working. [Why that inversion is deliberate.](#it-talks-rarely)
+- **In Claude Code it reads the session, not the clock.** Your turns, failed tool
+  calls, the same command fired back to back — signals a shell prompt cannot see.
+  [The Claude Code half.](#the-claude-code-half)
 
 ---
 
@@ -453,8 +474,6 @@ happening.
 </details>
 
 ## hacking
-
-[![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
 
 Go 1.24+, one dependency (`runewidth`, for cell widths).
 
