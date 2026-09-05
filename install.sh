@@ -324,8 +324,12 @@ main() {
 
   cursor_show
   if [ "$ANIM" = 1 ]; then
-    printf '\033[2B'
-    # Everything the steps said, under the bird instead of scrolling through it.
+    # Wipe the bird that sang. The one that signs off below is the same bird —
+    # leaving both on screen makes an install look like it installed two.
+    # The cursor is on the first of its two rows, and stays there: the step log
+    # takes the space the animation was using.
+    printf '\033[2K\033[1B\033[2K\033[1A\r'
+    # Everything the steps said, where the bird was instead of under it.
     sed 's/^/  /' "$STEP_LOG"
   fi
 
