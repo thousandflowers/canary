@@ -14,7 +14,7 @@ No color. No internet. No telemetry. One small binary and some block art.
 
 ## install
 
-Pick one. All three land the same binary.
+Pick one. All three land the same binary, and all three report the same version.
 
 ```sh
 # Homebrew
@@ -44,8 +44,11 @@ curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install
 ![the installer, singing the step it is on](assets/install.gif)
 
 Runs on zsh, bash and fish, macOS and Linux, amd64 and arm64, in any UTF-8
-terminal. `sh uninstall.sh` takes back the rc lines, the status line and
-`~/.canary`. Nothing else on your machine was touched.
+terminal. **No Windows build.** The bird lives in a POSIX shell hook, so
+Windows means WSL, where the Linux binary works like any other.
+
+`sh uninstall.sh` takes back the rc lines, the status line and `~/.canary`.
+Nothing else on your machine was touched.
 
 ## reading it first
 

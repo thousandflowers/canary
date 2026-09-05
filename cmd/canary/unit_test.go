@@ -661,6 +661,23 @@ func TestGlobalRandStaysInRange(t *testing.T) {
 	}
 }
 
+func TestVersionStringPrefersTheStampButFallsBackToBuildInfo(t *testing.T) {
+	// goreleaser stamps the version; `go install pkg@latest` cannot, and used to
+	// leave the binary calling itself "dev" while its own build info knew better.
+	cases := []struct{ stamped, module, want string }{
+		{"1.2.0", "v1.2.0", "1.2.0"}, // released binary: the stamp wins
+		{"1.2.0", "", "1.2.0"},       // stamped, no build info to consult
+		{"dev", "v1.2.0", "1.2.0"},   // go install: the module version is real
+		{"dev", "(devel)", "dev"},    // local go build: "dev" is the truth
+		{"dev", "", "dev"},           // nothing to go on
+	}
+	for _, c := range cases {
+		if got := versionString(c.stamped, c.module); got != c.want {
+			t.Errorf("versionString(%q, %q) = %q, want %q", c.stamped, c.module, got, c.want)
+		}
+	}
+}
+
 func TestBinaryPathFallsBackToPath(t *testing.T) {
 	// The one branch here that running the binary cannot reach: if the process
 	// cannot say where it is, PATH is all that is left.
