@@ -121,10 +121,15 @@ On a state change, and only then, the bird may say one line, in the slot right
 of its beak.
 
 ```
+ ▗███▖
 ▐ O ▌>  ⌐ all is well. i suspect something.
+ ▗███▖
 ▐ ^ ▌>  ⌐ the air is fine. i remain unconvinced.
+ ▗███▖
 ▐ - ▌>  ⌐ this is the part before the part.
+ ▗▓▓▓▖
 ▐ ~ ▌>  ⌐ still here. quieter than before.
+ ▗░░░▖
 ▐ x ▌v  ⌐ the canary is quiet.
 ```
 
@@ -141,11 +146,17 @@ this window. It is a **witness**.
 actually true. They are detected in code, not by dropping a file in a directory:
 
 ```
+ ▗███▖
 ▐ - ▌>  ⌐ sixth pass on that file. attached?        you keep reopening it
+ ▗███▖
 ▐ - ▌>  ⌐ nine files. zero tests. bold.             none of them a test
+ ▗▓▓▓▖
 ▐ ~ ▌>  ⌐ six hundred lines of blind faith.         nothing is committed
+ ▗███▖
 ▐ - ▌>  ⌐ the context is an archive, not a brain.   the session was compacted
+ ▗███▖
 ▐ ^ ▌>  ⌐ third time, same words, such optimism.    you asked that already
+ ▗███▖
 ▐ - ▌>  ⌐ you two have a communication problem.     you stopped it mid-answer
 ```
 
@@ -153,9 +164,13 @@ actually true. They are detected in code, not by dropping a file in a directory:
 else is going on:
 
 ```
+ ▗███▖
 ▐ O ▌>  ⌐ i had a job. it ended in 1986.
+ ▗███▖
 ▐ ^ ▌>  ⌐ they replaced me with a device that beeps.
+ ▗███▖
 ▐ O ▌>  ⌐ they wanted a number. i gave them a mood.
+ ▗███▖
 ▐ ^ ▌>  ⌐ this year everything got an assistant. including the birds.
 ```
 
@@ -163,10 +178,15 @@ else is going on:
 you are recovering:
 
 ```
+ ▗███▖
 ▐ O ▌>  ⌐ it got dark while we were in here.
+ ▗███▖
 ▐ ^ ▌>  ⌐ there are people who race pigeons. there are rankings.
+ ▗███▖
 ▐ O ▌>  ⌐ a canary's heart beats about a thousand times a minute.
+ ▗███▖
 ▐ ^ ▌>  ⌐ domestic canaries live twelve years. i did the math once.
+ ▗███▖
 ▐ O ▌>  ⌐ sisu. sitä ei käännetä.
 ```
 
@@ -178,7 +198,9 @@ If you want to know what it means, you get up.
 **And almost never.** 1 in 300, and only at that exact moment:
 
 ```
+ ▗███▖
 ▐ - ▌>  ⌐ four minutes past four. nobody is awake but us and the fans.
+ ▗▓▓▓▖
 ▐ ~ ▌>  ⌐ it is the twenty-fifth. the mine is closed and you are not.
 ```
 
