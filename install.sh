@@ -4,6 +4,7 @@
 #
 #   sh install.sh                       # from a cloned repo (builds, if you have Go)
 #   curl -fsSL <raw>/install.sh | sh    # remote install (downloads the release)
+#   sh install.sh --claude-only         # only Claude Code's bird, rc untouched
 #
 # Homebrew is the cleaner path and does the first half of this for you:
 #   brew install thousandflowers/tap/canary && canary settings install
@@ -250,7 +251,33 @@ wire_shell() {
 # machine without Claude Code is not a failed install.
 install_statusline() { "$CANARY_BIN" settings install || true; }
 
+usage() {
+  cat <<'USAGE'
+canary installer
+
+  sh install.sh                 install the binary, wire the shell prompt and
+                                Claude Code's status line
+  sh install.sh --claude-only   install the binary and Claude Code's status line
+                                only, and leave the shell rc alone
+  sh install.sh --help          this
+
+  CANARY_CLAUDE_ONLY=1          same as --claude-only, for `curl ... | sh`
+  CANARY_BIN_DIR=DIR            where to put the binary (default ~/.local/bin)
+USAGE
+}
+
 main() {
+  # Two birds, and some people want only the one in Claude Code. The env var is
+  # for the curl path, where passing a flag means `sh -s --`.
+  claude_only="${CANARY_CLAUDE_ONLY:-0}"
+  for arg in "$@"; do
+    case "$arg" in
+      --claude-only) claude_only=1 ;;
+      -h|--help) usage; return 0 ;;
+      *) echo "canary: unknown option: $arg" >&2; usage >&2; return 2 ;;
+    esac
+  done
+
   info=$(detect_rc)
   shell_name=${info%%|*}
   rc=${info#*|}
@@ -267,7 +294,11 @@ main() {
     plat=$(platform 2>/dev/null) || plat="source"
     printf '\ncanary — a retired safety instrument\n\n'
     printf '  platform  %s\n' "$plat"
-    printf '  shell     %s → %s\n' "$shell_name" "$(tilde "$rc")"
+    if [ "$claude_only" = 1 ]; then
+      printf '  shell     %s (untouched)\n' "$shell_name"
+    else
+      printf '  shell     %s → %s\n' "$shell_name" "$(tilde "$rc")"
+    fi
     printf '  binary    %s\n\n' "$(tilde "$CANARY_BIN")"
   fi
 
@@ -283,7 +314,9 @@ main() {
     fetch_label="fetching the binary"
   fi
   stage "$fetch_label" install_binary || { cursor_show; cat "$STEP_LOG" >&2; return 1; }
-  stage "wiring $shell_name" wire_shell || { cursor_show; cat "$STEP_LOG" >&2; return 1; }
+  if [ "$claude_only" != 1 ]; then
+    stage "wiring $shell_name" wire_shell || { cursor_show; cat "$STEP_LOG" >&2; return 1; }
+  fi
   stage "claude code's status line" install_statusline
 
   cursor_show
@@ -301,7 +334,12 @@ main() {
   if ! env COLUMNS="${COLUMNS:-80}" "$CANARY_BIN" preview --state fresh 2>/dev/null; then
     printf ' ▗███▖\n▐ O ▌>   canary installed for %s\n' "$shell_name"
   fi
-  printf '\nopen a new shell (or: . %s) to meet it.\n' "$(tilde "$rc")"
+  if [ "$claude_only" = 1 ]; then
+    printf '\nthe bird lives in Claude Code now; %s was not touched.\n' "$(tilde "$rc")"
+    printf 'want it above your shell prompt too? add: %s\n' "$hook"
+  else
+    printf '\nopen a new shell (or: . %s) to meet it.\n' "$(tilde "$rc")"
+  fi
 }
 
 main "$@"

@@ -34,6 +34,10 @@ newhome() { h="$TMP/h$RANDOM$RANDOM"; mkdir -p "$h"; printf '%s' "$h"; }
 install_into()   { env HOME="$1" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$1/.claude" \
                        GOPATH="$GOPATH_REAL" GOCACHE="$GOCACHE_REAL" GOMODCACHE="$GOMODCACHE_REAL" \
                        sh "$HERE/install.sh"   >/dev/null 2>&1; }
+# same, with flags for the installer: install_flags <home> [flag...]
+install_flags()  { h="$1"; shift; env HOME="$h" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$h/.claude" \
+                       GOPATH="$GOPATH_REAL" GOCACHE="$GOCACHE_REAL" GOMODCACHE="$GOMODCACHE_REAL" \
+                       sh "$HERE/install.sh" "$@" >/dev/null 2>&1; }
 uninstall_from() { env HOME="$1" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$1/.claude" sh "$HERE/uninstall.sh" >/dev/null 2>&1; }
 bin_of() { printf '%s' "$1/.local/bin/canary"; }
 
@@ -211,6 +215,33 @@ if command -v jq >/dev/null 2>&1; then
 else
   echo "skip — jq not installed, statusline wiring checks skipped"
 fi
+
+# --- 9. --claude-only wires Claude Code and leaves the rc alone --------------
+# Two birds, one binary, and some people want only the one in Claude Code. The
+# rc has to come out byte-identical: an installer that edits your shell anyway
+# is the reason this flag exists.
+H=$(newhome); printf 'export PREEXISTING=1\n' > "$H/.bashrc"; mkdir -p "$H/.claude"
+printf '{}\n' > "$H/.claude/settings.json"
+install_flags "$H" --claude-only
+[ -x "$(bin_of "$H")" ] || { echo "FAIL [claude-only-binary]: no binary at $(bin_of "$H")"; fails=$((fails+1)); }
+assert_eq "claude-only-rc-untouched" "$(cat "$H/.bashrc")" "export PREEXISTING=1"
+assert_has "claude-only-statusline"  "$(cat "$H/.claude/settings.json")" 'statusline'
+
+# and the env var, which is how the curl path asks for the same thing
+H=$(newhome); printf 'export PREEXISTING=1\n' > "$H/.bashrc"; mkdir -p "$H/.claude"
+printf '{}\n' > "$H/.claude/settings.json"
+CANARY_CLAUDE_ONLY=1; export CANARY_CLAUDE_ONLY
+install_into "$H"
+unset CANARY_CLAUDE_ONLY
+assert_eq "claude-only-env-rc-untouched" "$(cat "$H/.bashrc")" "export PREEXISTING=1"
+assert_has "claude-only-env-statusline"  "$(cat "$H/.claude/settings.json")" 'statusline'
+
+# an unknown flag is a usage error, not a silent full install
+H=$(newhome); printf 'export PREEXISTING=1\n' > "$H/.bashrc"
+if install_flags "$H" --nope; then
+  echo "FAIL [claude-only-bad-flag]: an unknown flag exited 0"; fails=$((fails+1))
+fi
+assert_eq "claude-only-bad-flag-rc" "$(cat "$H/.bashrc")" "export PREEXISTING=1"
 
 # --- the animation stays out of anything that is not a terminal -------------
 # A pipe, a CI log or a redirect must get words, not cursor movement. This is
