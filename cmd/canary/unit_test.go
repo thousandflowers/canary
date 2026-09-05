@@ -396,8 +396,8 @@ func TestSettingsInstallOnAFreshConfig(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "wired into") {
 		t.Errorf("exit %d, output %q", code, out)
 	}
-	settings, ok := readSettings(filepath.Join(claude, "settings.json"))
-	if !ok || !strings.Contains(currentCommand(settings), "statusline") {
+	settings, why := readSettings(filepath.Join(claude, "settings.json"))
+	if why != "" || !strings.Contains(currentCommand(settings), "statusline") {
 		t.Errorf("nothing was wired: %+v", settings)
 	}
 
@@ -477,22 +477,38 @@ func TestSettingsReportsAFileItCannotWrite(t *testing.T) {
 func TestReadSettingsToleratesWhatItFinds(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "absent.json")
-	if got, ok := readSettings(missing); !ok || len(got) != 0 {
-		t.Errorf("a missing file should read as an empty config: %+v ok=%v", got, ok)
+	if got, why := readSettings(missing); why != "" || len(got) != 0 {
+		t.Errorf("a missing file should read as an empty config: %+v why=%q", got, why)
 	}
 	empty := filepath.Join(dir, "empty.json")
 	os.WriteFile(empty, []byte("   \n"), 0o644)
-	if got, ok := readSettings(empty); !ok || len(got) != 0 {
-		t.Errorf("an empty file should read as an empty config: %+v ok=%v", got, ok)
+	if got, why := readSettings(empty); why != "" || len(got) != 0 {
+		t.Errorf("an empty file should read as an empty config: %+v why=%q", got, why)
 	}
+
+	// Three different things go wrong here and they used to produce one
+	// sentence, about comments. Somebody with a permission bit set wrong went
+	// looking for a comment that was never there.
 	broken := filepath.Join(dir, "broken.json")
 	os.WriteFile(broken, []byte("{not json"), 0o644)
-	if _, ok := readSettings(broken); ok {
-		t.Error("unparseable JSON was accepted for rewriting")
+	if _, why := readSettings(broken); !strings.Contains(why, "comments?") {
+		t.Errorf("unparseable JSON: why=%q", why)
+	}
+	array := filepath.Join(dir, "array.json")
+	os.WriteFile(array, []byte("[1,2,3]\n"), 0o644)
+	if _, why := readSettings(array); !strings.Contains(why, "not an object") {
+		t.Errorf("valid JSON that is not an object: why=%q", why)
 	}
 	// A directory in place of the file: unreadable, and not ours to rewrite.
-	if _, ok := readSettings(dir); ok {
-		t.Error("a directory was accepted as settings")
+	if _, why := readSettings(dir); !strings.Contains(why, "cannot be read") {
+		t.Errorf("a directory: why=%q", why)
+	}
+	unreadable := filepath.Join(dir, "locked.json")
+	os.WriteFile(unreadable, []byte("{}"), 0o000)
+	if os.Geteuid() != 0 { // root reads it anyway, and CI sometimes is root
+		if _, why := readSettings(unreadable); !strings.Contains(why, "cannot be read") {
+			t.Errorf("an unreadable file: why=%q", why)
+		}
 	}
 }
 

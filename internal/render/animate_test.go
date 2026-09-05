@@ -44,9 +44,12 @@ func TestTheFrameComesFromTheClock(t *testing.T) {
 			t.Errorf("epoch %d: got %q, want %q", i, got, want)
 		}
 	}
-	// The same second always draws the same frame, whoever asks.
-	if AnimatedNote(fatigue.Fresh, 1000, false) != AnimatedNote(fatigue.Fresh, 1000, false) {
-		t.Error("two draws of one second disagreed")
+	// The same second always draws the same frame, whoever asks: the note comes
+	// from the clock and nothing else, so two callers cannot disagree.
+	first := AnimatedNote(fatigue.Fresh, 1000, false)
+	second := AnimatedNote(fatigue.Fresh, 1000, false)
+	if first != second {
+		t.Errorf("two draws of one second disagreed: %q vs %q", first, second)
 	}
 }
 
