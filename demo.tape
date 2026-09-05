@@ -13,13 +13,13 @@
 Output assets/demo.gif
 
 Set Shell "bash"
-# The window is sized so that eighty columns actually fit, and COLUMNS is
-# exported to match below. The bird trims a phrase to the cells it believes it
+# Sized so the bird is legible at the width a README renders it, and COLUMNS
+# is exported to match: fifty-two columns of bird and phrase, not eighty. The bird trims a phrase to the cells it believes it
 # has, and COLUMNS is the only thing it can believe: a window narrower than the
 # assumption wraps the row instead of trimming it, and a wider one is dead
 # space.
-Set FontSize 22
-Set Width 1240
+Set FontSize 36
+Set Width 1200
 Set Height 240
 Set Padding 24
 
@@ -29,7 +29,7 @@ Hide
 Type `go build -o /tmp/canary ./cmd/canary`
 Enter
 Sleep 5s
-Type `export COLUMNS=80`
+Type `export COLUMNS=52`
 Enter
 Type `/tmp/canary demo`
 Enter

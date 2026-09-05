@@ -303,11 +303,12 @@ Claude Code allows one status line command, so canary is **appended** to
 whatever is already there rather than replacing it. caveman prints no trailing
 newline, so its badge and canary's stat row share the first row:
 
-```
-[CAVEMAN] tired · 58m · 41t
-▗███▖
-▐ - ▌>  ⌐ sliding. slowly. audibly.
-```
+![canary in Claude Code's status line, beside another tool's badge](assets/statusline.png)
+
+That is a real session, not a mock-up: `[CAVEMAN]` belongs to the tool that was
+already on the row, `1425m` is what twenty-four hours of one session looks like,
+and the last line is the multi-day debt — nights the bird has watched go past
+the limit, which no single session can explain away.
 
 Wanting only this bird is a normal thing to want. `brew install` wires nothing
 by itself, so stopping after `canary settings install` is enough; the one-liner
