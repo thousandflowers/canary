@@ -420,6 +420,11 @@ newline, so its badge and canary's stat row share the first row:
 ▐ - ▌>  ⌐ sliding. slowly. audibly.
 ```
 
+One binary, both halves. Above a shell prompt it counts commands; fed the JSON
+Claude Code sends, it counts the session:
+
+![the same binary drawing above a shell prompt, then reading a Claude Code session](assets/halves.gif)
+
 Wanting only this bird is a normal thing to want. `brew install` wires nothing
 by itself, so stopping after `canary settings install` is enough; the one-liner
 takes `--claude-only` (or `CANARY_CLAUDE_ONLY=1`) for the same thing. Already
