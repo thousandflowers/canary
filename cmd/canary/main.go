@@ -11,6 +11,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
+	"strings"
 
 	"github.com/thousandflowers/canary/internal/config"
 )
@@ -18,6 +20,26 @@ import (
 // version is stamped at build time by the release tooling. A binary built by
 // hand says so rather than claiming a release number it does not have.
 var version = "dev"
+
+// versionString is what `canary version` prints.
+//
+// goreleaser stamps `version` through ldflags. `go install <pkg>@latest`
+// cannot: it compiles from source with no flags of ours, so that binary used to
+// call itself "dev" while the module version it was built from sat in its own
+// build info. The README offers three install paths and promises the same
+// binary from each; a version string that depends on which one you took is the
+// one place that promise used to break.
+//
+// A local `go build` reports "(devel)" and keeps saying "dev", which is true.
+func versionString(stamped, module string) string {
+	if stamped != "dev" {
+		return stamped
+	}
+	if strings.HasPrefix(module, "v") {
+		return strings.TrimPrefix(module, "v")
+	}
+	return stamped
+}
 
 const usage = `canary — a pixel-art bird that wilts while you grind.
 
@@ -86,7 +108,11 @@ func run(args []string) int {
 	case "settings":
 		return runSettings(cfg, args)
 	case "version", "--version", "-v":
-		fmt.Println("canary " + version)
+		module := ""
+		if bi, ok := debug.ReadBuildInfo(); ok {
+			module = bi.Main.Version
+		}
+		fmt.Println("canary " + versionString(version, module))
 	case "help", "-h", "--help":
 		fmt.Println(usage)
 	default:
