@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -104,9 +103,8 @@ func binaryPath() string {
 	if err != nil {
 		return "canary" // PATH is the only fallback left
 	}
-	if abs, err := filepath.Abs(exe); err == nil {
-		return abs
-	}
+	// Already absolute on both platforms canary ships for: Linux reads
+	// /proc/self/exe, and darwin joins the startup working directory itself.
 	return exe
 }
 
