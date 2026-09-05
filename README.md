@@ -14,7 +14,7 @@ No color. No internet. No telemetry. One small binary and some block art.
 
 ## install
 
-Pick one. All three land the same binary, and all three report the same version.
+Pick one. All three land the same binary.
 
 ```sh
 # Homebrew
@@ -26,6 +26,11 @@ curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install
 # Go
 go install github.com/thousandflowers/canary/cmd/canary@latest
 ```
+
+`canary version` reports the same release from all three. A `go install` in
+the first minutes after a release can still land on the previous one: the Go
+module proxy has not listed the new tag yet, and `@latest` means the latest it
+knows about. Naming the tag (`@v1.2.1`) is exact.
 
 Then wire the half you want. Both, or either one on its own:
 
@@ -526,8 +531,14 @@ Go 1.24+, one dependency (`runewidth`, for cell widths).
 go test ./...                     # everything, including the corpus linter
 canary lint ./phrases             # just the corpus, no Go toolchain needed
 bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
-vhs demo.tape                     # re-record the gif
+vhs demo.tape                     # the five states
+vhs halves.tape                   # both halves, one binary
+vhs install.tape                  # the installer (its header has the trim)
 ```
+
+`install.tape` records a window three rows tall and ffmpeg keeps the seconds
+where the bird is the only thing moving. The command is in the tape's header,
+along with why the crop is vertical only.
 
 **Coverage is 100%, and CI fails below it.** Not because a number is the point,
 but because the branches that go untested in a tool like this are exactly the
