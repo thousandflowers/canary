@@ -82,8 +82,41 @@ func runDemo(cfg config.Config, args []string) int {
 		fmt.Fprintln(os.Stderr, demoUsage)
 		return 2
 	}
-	play(os.Stdout, demoSequence(corpus(cfg), dice, cfg, only), demoTick)
+	frames := demoSequence(corpus(cfg), dice, cfg, only)
+	if !stdoutIsTerminal() {
+		playPlain(os.Stdout, frames)
+		return 0
+	}
+	play(os.Stdout, frames, demoTick)
 	return 0
+}
+
+// stdoutIsTerminal reports whether there is a screen to draw on. A variable so
+// the tests can answer for it: nothing running under `go test` has a terminal.
+var stdoutIsTerminal = func() bool {
+	fi, err := os.Stdout.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// playPlain is the demo with the screen taken away: `canary demo | tee`, a CI
+// log, a pipe into `less`. Cursor codes there are not an animation, they are
+// litter in somebody's file.
+//
+// One block per thing that actually changed. The stat row is excluded from the
+// comparison because its clock moves every third frame, and a transcript that
+// reprints the same bird seventy times to show a minute counter is the same
+// litter in a different form.
+func playPlain(w io.Writer, frames []string) {
+	prev := ""
+	for _, frame := range frames {
+		rows := strings.Split(frame, "\n")
+		key := strings.Join(rows[1:], "\n")
+		if key == prev {
+			continue
+		}
+		prev = key
+		fmt.Fprintln(w, frame)
+	}
 }
 
 // play draws each frame over the last one.
