@@ -216,6 +216,20 @@ else
   echo "skip — jq not installed, statusline wiring checks skipped"
 fi
 
+# --- 8b. install then uninstall leaves the rc byte-identical -----------------
+# The README promises the uninstall takes back what the install added. A blank
+# line left behind is still a fingerprint, and four rounds of install/uninstall
+# used to grow four of them.
+H=$(newhome); printf 'export PREEXISTING=1\n\n# my own spacing above\n\nexport LATER=2\n' > "$H/.bashrc"
+before=$(cat "$H/.bashrc")
+install_into "$H"; uninstall_from "$H"
+assert_eq "roundtrip-byte-identical" "$(cat "$H/.bashrc")" "$before"
+
+# and it stays identical after several rounds
+install_into "$H"; uninstall_from "$H"
+install_into "$H"; uninstall_from "$H"
+assert_eq "roundtrip-three-times" "$(cat "$H/.bashrc")" "$before"
+
 # --- 9. --claude-only wires Claude Code and leaves the rc alone --------------
 # Two birds, one binary, and some people want only the one in Claude Code. The
 # rc has to come out byte-identical: an installer that edits your shell anyway

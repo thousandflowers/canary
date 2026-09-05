@@ -79,6 +79,12 @@ func TestDemoDrawsTheWholeBirdAndNothingElse(t *testing.T) {
 	isolate(t)
 	noSleep(t)
 
+	// On a screen. Nothing under `go test` has one, and the piped form is
+	// checked separately below.
+	old := stdoutIsTerminal
+	t.Cleanup(func() { stdoutIsTerminal = old })
+	stdoutIsTerminal = func() bool { return true }
+
 	out, code := capture(t, func() int { return runDemo(config.FromEnv(), nil) })
 	if code != 0 {
 		t.Fatalf("exit %d", code)
@@ -184,5 +190,39 @@ func TestDemoLineFallsSilentWithNothingToSay(t *testing.T) {
 
 	if got := demoLine(phrase.FromDir(empty), fatigue.Worn, globalRand{}); got != "" {
 		t.Errorf("got %q from a corpus with no lines in it", got)
+	}
+}
+
+func TestDemoInAPipeDrawsNoCursorCodes(t *testing.T) {
+	// `canary demo | tee log` used to write the screen-clearing and cursor-up
+	// codes into the file. The words are the point; the animation is not.
+	old := stdoutIsTerminal
+	t.Cleanup(func() { stdoutIsTerminal = old })
+	stdoutIsTerminal = func() bool { return false }
+
+	home := isolate(t)
+	_ = home
+	out, code := capture(t, func() int { return runDemo(config.FromEnv(), []string{"--state", "worn"}) })
+	if code != 0 {
+		t.Fatalf("demo exited %d", code)
+	}
+	if strings.Contains(out, "\033[") || strings.Contains(out, "\x1b[") {
+		t.Errorf("cursor codes in piped output:\n%q", out)
+	}
+	if !strings.Contains(out, "▐ ~ ▌>") {
+		t.Errorf("the worn bird is missing from piped output:\n%s", out)
+	}
+}
+
+func TestPlayPlainSkipsFramesThatOnlyMoveTheClock(t *testing.T) {
+	frames := []string{
+		" worn · 1m · 0t\n▗▓▓▓▖\n▐ ~ ▌>  ♪",
+		" worn · 2m · 0t\n▗▓▓▓▖\n▐ ~ ▌>  ♪",
+		" worn · 2m · 0t\n▗▓▓▓▖\n▐ ~ ▌>  ⌐ still here.",
+	}
+	var b strings.Builder
+	playPlain(&b, frames)
+	if n := strings.Count(b.String(), "▗▓▓▓▖"); n != 2 {
+		t.Errorf("printed %d blocks, want 2 (the clock alone is not a change)", n)
 	}
 }

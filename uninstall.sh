@@ -62,6 +62,22 @@ strip_rc() {
   grep -qE -e "$CANARY_MARK1" -e "$CANARY_MARK2" -e "$CANARY_MARK3" "$rc" 2>/dev/null || return 0
 
   tmp="$rc.canary.tmp.$$"
+  blankless="$rc.canary.blank.$$"
+
+  # install.sh writes each block as a blank line, its marker comment, then the
+  # line itself. Dropping the two lines and leaving the blank behind is how an
+  # uninstall that claims to take back what it added still leaves a fingerprint:
+  # run install and uninstall four times and the rc grows four blank lines.
+  #
+  # So the blank that belongs to a marker goes first, and only that one: a run
+  # of blanks before a marker keeps all but the last, because the others were
+  # the person's own spacing.
+  awk -v m1="$CANARY_MARK1" -v m3="$CANARY_MARK3" '
+    /^[[:space:]]*$/ { if (pending) print ""; pending = 1; next }
+    { if (pending) { if ($0 !~ m1 && $0 !~ m3) print ""; pending = 0 } print }
+    END { if (pending) print "" }
+  ' "$rc" > "$blankless" 2>/dev/null && mv "$blankless" "$rc" 2>/dev/null
+  unlink "$blankless" 2>/dev/null || true
   # The bare `. ~/.bashrc` line is only ours when our marker comment sits in the
   # same file. Without that check we would delete a chain the user wrote long
   # before installing canary.
