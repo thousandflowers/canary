@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,9 +58,9 @@ func settingsInstall(path string) int {
 		return 0
 	}
 
-	settings, ok := readSettings(path)
-	if !ok {
-		fmt.Printf("canary: %s is not plain JSON (comments?) — left untouched.\n", path)
+	settings, why := readSettings(path)
+	if why != "" {
+		fmt.Printf("canary: %s %s — left untouched.\n", path, why)
 		fmt.Printf("        add this to statusLine.command yourself: %s\n", add)
 		return 0
 	}
@@ -97,9 +99,9 @@ func settingsInstall(path string) int {
 }
 
 func settingsRemove(path string) int {
-	settings, ok := readSettings(path)
-	if !ok {
-		return 0 // nothing to unwire, or nothing safe to touch
+	settings, why := readSettings(path)
+	if why != "" {
+		return 0 // nothing safe to touch
 	}
 	cur := currentCommand(settings)
 	if cur == "" {
@@ -135,25 +137,34 @@ func statuslineCommand() string {
 	return shellQuote(binaryPath()) + " statusline"
 }
 
-// readSettings parses the file, treating a missing one as empty. ok is false
-// when the file exists but is not JSON canary can safely rewrite — JSONC with
-// comments, most likely — because rewriting it would silently drop them.
-func readSettings(path string) (map[string]any, bool) {
+// readSettings parses the file, treating a missing one as empty. why is empty
+// when the settings came back usable, and otherwise says what is wrong in the
+// words the person needs: a permission bit and a comment are different
+// problems, and "comments?" sent people looking for the wrong one.
+func readSettings(path string) (map[string]any, string) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]any{}, true
+			return map[string]any{}, ""
 		}
-		return nil, false
+		reason := err.Error()
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			reason = pe.Err.Error()
+		}
+		return nil, "cannot be read (" + reason + ")"
 	}
 	if len(strings.TrimSpace(string(raw))) == 0 {
-		return map[string]any{}, true
+		return map[string]any{}, ""
 	}
 	var out map[string]any
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, false
+		if json.Valid(raw) {
+			return nil, "is JSON, but not an object"
+		}
+		return nil, "is not plain JSON (comments?)"
 	}
-	return out, true
+	return out, ""
 }
 
 // writeSettings replaces the file atomically, through any symlink and with the

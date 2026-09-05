@@ -230,6 +230,21 @@ install_into "$H"; uninstall_from "$H"
 install_into "$H"; uninstall_from "$H"
 assert_eq "roundtrip-three-times" "$(cat "$H/.bashrc")" "$before"
 
+# --- 8c. an rc it cannot write is a failure, not a success ------------------
+# The installer used to print "added the hook", sign off with "open a new shell
+# to meet it", and change nothing: the bird never appeared and there was no way
+# to find out why.
+if [ "$(id -u)" != 0 ]; then   # root writes read-only files, and CI sometimes is root
+  H=$(newhome); printf 'export PREEXISTING=1\n' > "$H/.bashrc"; chmod 444 "$H/.bashrc"
+  if install_into "$H"; then
+    echo "FAIL [readonly-rc-exit]: the installer reported success"; fails=$((fails+1))
+  fi
+  assert_eq "readonly-rc-untouched" "$(cat "$H/.bashrc")" "export PREEXISTING=1"
+  out=$(env HOME="$H" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$H/.claude" sh "$HERE/install.sh" 2>&1 || true)
+  assert_has "readonly-rc-says-why" "$out" "cannot write"
+  chmod 644 "$H/.bashrc"
+fi
+
 # --- 9. --claude-only wires Claude Code and leaves the rc alone --------------
 # Two birds, one binary, and some people want only the one in Claude Code. The
 # rc has to come out byte-identical: an installer that edits your shell anyway

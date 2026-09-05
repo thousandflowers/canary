@@ -51,10 +51,6 @@ func speaksCommon() *scripted { return &scripted{values: []int{99, 1, 1, 1}} }
 // the uncommon die; in a fresh one it is the rare die; on christmas it is ultra.
 func hits() *scripted { return &scripted{values: []int{99, 0}} }
 
-// missesRare passes the rare die and takes the uncommon one, for a band that
-// rolls both.
-func missesRare() *scripted { return &scripted{values: []int{99, 1, 0}} }
-
 // commonThenRandom fixes the tier dice and lets the shuffle be random, which is
 // what a test about pool membership needs: a fully scripted generator deals the
 // same permutation every time and only ever sees one line of the pool.

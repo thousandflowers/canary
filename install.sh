@@ -132,14 +132,25 @@ ensure_line() {
   # Named, because the PATH line and the hook both come through here and two
   # identical "added the hook" lines read like the installer did it twice.
   what=${3:-hook}
-  mkdir -p "$(dirname "$rc")"
-  touch "$rc"
+  mkdir -p "$(dirname "$rc")" 2>/dev/null || true
+  touch "$rc" 2>/dev/null || true
   if grep -qF "$line" "$rc" 2>/dev/null; then
     echo "canary: rc already has the $what ($rc)"
-  else
-    printf '\n%s\n%s\n' "$CANARY_RC_MARK" "$line" >> "$rc"
-    echo "canary: added the $what to $rc"
+    return 0
   fi
+  # A read-only rc used to print "added the hook" and change nothing: the
+  # installer signed off, the bird never appeared, and there was no way to tell
+  # why. An install that could not do the thing has to say so and fail.
+  # -w first: a failed redirection makes the shell itself print "Permission
+  # denied" on the way past, which lands in the middle of the animation.
+  if [ -w "$rc" ] && printf '\n%s\n%s\n' "$CANARY_RC_MARK" "$line" >> "$rc" 2>/dev/null; then
+    echo "canary: added the $what to $rc"
+    return 0
+  fi
+  echo "canary: cannot write $rc — the $what was not added." >&2
+  echo "canary: make it writable, or add this line yourself:" >&2
+  echo "  $line" >&2
+  return 1
 }
 
 # --- $CANARY_BIN_DIR on PATH, only when it is not already --------------------
@@ -153,9 +164,9 @@ ensure_path() {
     *":$CANARY_BIN_DIR:"*) return 0 ;;
   esac
   if [ "$shell_name" = fish ]; then
-    ensure_line "$rc" "fish_add_path $CANARY_BIN_DIR" "PATH line"
+    ensure_line "$rc" "fish_add_path $CANARY_BIN_DIR" "PATH line" || return 1
   else
-    ensure_line "$rc" "export PATH=\"$CANARY_BIN_DIR:\$PATH\"" "PATH line"
+    ensure_line "$rc" "export PATH=\"$CANARY_BIN_DIR:\$PATH\"" "PATH line" || return 1
   fi
 }
 
@@ -241,9 +252,9 @@ stage() {
 tilde() { case $1 in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 
 wire_shell() {
-  ensure_path "$shell_name" "$rc"
+  ensure_path "$shell_name" "$rc" || return 1
   if [ -n "$hook" ]; then
-    ensure_line "$rc" "$hook"
+    ensure_line "$rc" "$hook" || return 1
     if [ "$shell_name" = bash ]; then ensure_bash_chain; fi
   else
     echo "canary: no prompt hook for $shell_name — \`canary\` still works by hand"
