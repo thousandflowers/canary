@@ -50,7 +50,9 @@ curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install
 
 Runs on zsh, bash and fish, macOS and Linux, amd64 and arm64, in any UTF-8
 terminal. **No Windows build.** The bird lives in a POSIX shell hook, so
-Windows means WSL, where the Linux binary works like any other.
+Windows means WSL, running the Linux binary. CI drives the hooks in a real
+zsh, bash and fish on Linux every push; WSL itself nobody here has tried, so
+if you run it there, say how it went.
 
 `sh uninstall.sh` takes back the rc lines, the status line and `~/.canary`.
 Nothing else on your machine was touched.
