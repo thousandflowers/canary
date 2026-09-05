@@ -402,6 +402,8 @@ runs what it just installed and lets it draw itself with a line from the corpus
 compiled into it. Into a pipe, a CI log or with `NO_COLOR` or `CANARY_NO_ANIM`
 set, it is the same words with no cursor games.
 
+![the installer, singing through each step](assets/install.gif)
+
 <details>
 <summary>upgrading from 0.x</summary>
 

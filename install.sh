@@ -129,13 +129,16 @@ ensure_bash_chain() {
 ensure_line() {
   rc=$1
   line=$2
+  # Named, because the PATH line and the hook both come through here and two
+  # identical "added the hook" lines read like the installer did it twice.
+  what=${3:-hook}
   mkdir -p "$(dirname "$rc")"
   touch "$rc"
   if grep -qF "$line" "$rc" 2>/dev/null; then
-    echo "canary: rc already wired ($rc)"
+    echo "canary: rc already has the $what ($rc)"
   else
     printf '\n%s\n%s\n' "$CANARY_RC_MARK" "$line" >> "$rc"
-    echo "canary: added the hook to $rc"
+    echo "canary: added the $what to $rc"
   fi
 }
 
@@ -150,9 +153,9 @@ ensure_path() {
     *":$CANARY_BIN_DIR:"*) return 0 ;;
   esac
   if [ "$shell_name" = fish ]; then
-    ensure_line "$rc" "fish_add_path $CANARY_BIN_DIR"
+    ensure_line "$rc" "fish_add_path $CANARY_BIN_DIR" "PATH line"
   else
-    ensure_line "$rc" "export PATH=\"$CANARY_BIN_DIR:\$PATH\""
+    ensure_line "$rc" "export PATH=\"$CANARY_BIN_DIR:\$PATH\"" "PATH line"
   fi
 }
 
