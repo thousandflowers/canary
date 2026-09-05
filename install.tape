@@ -1,21 +1,30 @@
-# canary installer tape — render with:  vhs install.tape
-# produces assets/install.gif
-# https://github.com/charmbracelet/vhs
+# canary installer tape — render with:
 #
-# What is on camera is one command, `sh ./install.sh`, and what it draws: the
-# platform it found, the bird singing through each step, and the binary it just
-# installed drawing itself at the end.
+#   vhs install.tape
+#   ffmpeg -ss 0.68 -t 1.40 -i install-raw.gif \
+#     -vf "crop=500:66:22:214,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse" \
+#     -loop 0 assets/install.gif
+#
+# Two steps on purpose. What belongs in a README is the bird singing and the
+# step it is singing about — 500x66 of it. The rest of an install is paths and
+# a step log: true, useful in a terminal, and a wall of text in a page. vhs
+# cannot crop, so the tape records the whole window and ffmpeg keeps the strip
+# where the bird is (y 214) for the seconds where it is the only thing moving.
+#
+# Re-derive the numbers if the layout changes: the crop is the two rows the
+# bird draws, and the window is from the first frame it appears to the last one
+# before the step log lands underneath it.
 #
 # HOME is a throwaway directory, so recording this cannot wire the rc of the
 # machine doing the recording. The Go caches are passed through from the real
-# HOME: a cold cache would re-download every module and the recording would be
-# a minute of singing with nothing to show for it.
+# HOME: a cold cache would re-download every module and stretch the recording
+# into a minute of nothing.
 #
 # Every Type line is a backtick string. vhs cannot parse an escaped double
 # quote inside a "..." string, which is easy to write and impossible to notice
 # until the render fails.
 
-Output assets/install.gif
+Output install-raw.gif
 
 Set Shell "bash"
 Set FontSize 20
