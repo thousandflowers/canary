@@ -680,6 +680,34 @@ func TestBinaryPathFallsBackToPath(t *testing.T) {
 	}
 }
 
+func TestBinaryPathKeepsTheSymlinkHomebrewInstalls(t *testing.T) {
+	// Homebrew's bin/canary points into a version-pinned Cellar directory that
+	// the next `brew cleanup` deletes. The status line command is written into
+	// settings.json once and never rewritten, so resolving the link there
+	// leaves behind a path that stops existing after an upgrade.
+	dir := t.TempDir()
+	cellar := filepath.Join(dir, "Cellar", "canary", "1.1.0", "bin")
+	if err := os.MkdirAll(cellar, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(cellar, "canary")
+	if err := os.WriteFile(real, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "canary")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+
+	old := executable
+	t.Cleanup(func() { executable = old })
+	executable = func() (string, error) { return link, nil }
+
+	if got := binaryPath(); got != link {
+		t.Errorf("binaryPath = %q, want the symlink itself %q", got, link)
+	}
+}
+
 func TestSettingsInstallRefusesToRewriteJSONWithCommentsInIt(t *testing.T) {
 	home := isolate(t)
 	claude := filepath.Join(home, ".claude")

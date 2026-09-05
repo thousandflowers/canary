@@ -309,6 +309,12 @@ newline, so its badge and canary's stat row share the first row:
 ▐ - ▌>  ⌐ sliding. slowly. audibly.
 ```
 
+Wanting only this bird is a normal thing to want. `brew install` wires nothing
+by itself, so stopping after `canary settings install` is enough; the one-liner
+takes `--claude-only` (or `CANARY_CLAUDE_ONLY=1`) for the same thing. Already
+wired both and want the shell one gone? Drop the `canary` line from your rc, or
+`canary settings remove` for the opposite trade.
+
 Here the bird watches your **coding session**, not your shell. Claude Code pipes
 its session JSON in on every refresh; canary reads the duration and walks the
 transcript for signals the shell bird cannot see:
@@ -380,6 +386,10 @@ go install github.com/thousandflowers/canary/cmd/canary@latest
 
 # or the one-liner
 curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | sh
+
+# only the Claude Code bird — your shell rc is never touched
+sh install.sh --claude-only
+curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | CANARY_CLAUDE_ONLY=1 sh
 ```
 
 zsh, bash and fish. macOS and Linux, amd64 and arm64. A UTF-8 terminal.
