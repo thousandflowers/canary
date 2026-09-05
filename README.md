@@ -1,18 +1,104 @@
 # canary
 
-**a pixel-art bird that wilts while you work.**
-it perches above your shell prompt and inside Claude Code's status line, watches
-how long you have been at it, and slowly falls apart.
-
-no color. no internet. no telemetry. one small binary and some block art.
-
 ![canary wilting across a session](assets/demo.gif)
 
+**A pixel-art bird that wilts while you work.** It perches above your shell
+prompt and inside Claude Code's status line, watches how long you have been at
+it, and slowly falls apart.
+
+No color. No internet. No telemetry. One small binary and some block art.
+
+[![release](https://img.shields.io/github/v/release/thousandflowers/canary?color=555&label=release)](https://github.com/thousandflowers/canary/releases)
+[![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-555)](LICENSE)
+
+## install
+
+Pick one. All three land the same binary.
+
 ```sh
+# Homebrew
 brew install thousandflowers/tap/canary
-eval "$(canary init zsh)"    # bash and fish too
-canary settings install      # the Claude Code half
+
+# one line, no Homebrew
+curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | sh
+
+# Go
+go install github.com/thousandflowers/canary/cmd/canary@latest
 ```
+
+Then wire the half you want. Both, or either one on its own:
+
+```sh
+eval "$(canary init zsh)"   # above your shell prompt (bash and fish too)
+canary settings install     # inside Claude Code's status line
+```
+
+The one-liner wires both for you. For the Claude Code bird alone, and a shell
+rc left untouched:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | CANARY_CLAUDE_ONLY=1 sh
+```
+
+![the installer, singing the step it is on](assets/install.gif)
+
+Runs on zsh, bash and fish, macOS and Linux, amd64 and arm64, in any UTF-8
+terminal. `sh uninstall.sh` takes back the rc lines, the status line and
+`~/.canary`. Nothing else on your machine was touched.
+
+## reading it first
+
+Good instinct: `curl | sh` runs code sight-unseen. The script is 352 lines and it is
+meant to be read.
+
+```sh
+git clone https://github.com/thousandflowers/canary
+cd canary
+less install.sh
+sh install.sh                 # builds from source if you have Go
+sh install.sh --claude-only   # or only the Claude Code half
+```
+
+In a terminal the installer names what it found (platform, shell, where the
+binary is going) and the bird sings while it works, the same note pattern a
+fresh bird animates with during a break. The last word is the binary's own: it
+runs what it just installed and lets it draw itself with a line from the corpus
+compiled into it. Into a pipe, a CI log or with `NO_COLOR` or `CANARY_NO_ANIM`
+set, it is the same words with no cursor games.
+
+<details>
+<summary>upgrading from 0.x</summary>
+
+0.x was three shell scripts installed into `~/.canary`. v1.0 is one binary and
+nothing else: run `install.sh` again, or `sh uninstall.sh` first if you want to
+be thorough: it recognises the old source line and takes it back.
+
+Two things changed on purpose:
+
+- **`canary on` / `canary off` are gone.** A binary cannot change the
+  environment of the shell that ran it. `CANARY_DISABLED=1` still works.
+- **The bird is per-person now, not per-terminal.** Three windows used to mean
+  three independent birds, while the file the status line read was overwritten
+  by whichever of them ran a command last. One state file, shared. Idle gaps
+  still do not count, so a window you are not typing in ages nothing.
+
+</details>
+
+## three things a screenshot will not tell you
+
+**The five birds are a real scale.** They are the five labelled anchors of the
+Karolinska Sleepiness Scale, and **worn, at KSS 7, is the one that means stop.**
+Tired is the neutral midpoint. [The arithmetic, and the papers under
+it.](#the-number-behind-the-face)
+
+**It is quiet on purpose.** About two thirds of the moments it could speak, it
+says nothing, and the one animation it has only plays once you have actually
+stopped working. [Why that inversion is deliberate.](#it-talks-rarely)
+
+**In Claude Code it reads the session, not the clock.** Your turns, your failed
+tool calls, the same command fired back to back: signals a shell prompt cannot
+see. [The Claude Code half.](#the-claude-code-half)
 
 ---
 
@@ -25,13 +111,13 @@ canary settings install      # the Claude Code half
 ```
 
 They are not five moods somebody made up. They are the five labelled anchors of
-the Karolinska Sleepiness Scale, and **worn — not tired — is the one that means
+the Karolinska Sleepiness Scale, and **worn, not tired, is the one that means
 something**: KSS 7 is where fatigue-risk protocols say to stop. Tired is the
 neutral middle of the scale. You are allowed to be tired.
 
 ## it talks. rarely.
 
-On a state change — and only then — the bird may say one line, in the slot right
+On a state change, and only then, the bird may say one line, in the slot right
 of its beak.
 
 ```
@@ -48,10 +134,10 @@ the silence after the dead bird's one line is the loudest thing this tool says.
 It is a canary that had a job. The job ended in 1986, when detectors replaced
 birds in the mines. It is a retired safety instrument: it knows one thing, that
 thing is no longer needed, and it is doing it anyway in a status bar. It is not
-your friend, your coach, or your assistant — there is already an assistant in
+your friend, your coach, or your assistant. There is already an assistant in
 this window. It is a **witness**.
 
-**Sometimes it has noticed something** — 1 in 8, and only when one of these is
+**Sometimes it has noticed something.** 1 in 8, and only when one of these is
 actually true. They are detected in code, not by dropping a file in a directory:
 
 ```
@@ -63,7 +149,7 @@ actually true. They are detected in code, not by dropping a file in a directory:
 ▐ - ▌>  ⌐ you two have a communication problem.     you stopped it mid-answer
 ```
 
-**Sometimes it remembers what it used to be** — the same 1 in 8, when nothing
+**Sometimes it remembers what it used to be.** The same 1 in 8, when nothing
 else is going on:
 
 ```
@@ -73,7 +159,7 @@ else is going on:
 ▐ ^ ▌>  ⌐ this year everything got an assistant. including the birds.
 ```
 
-**And once in a long while it looks out of the cage** — 1 in 40, and only while
+**And once in a long while it looks out of the cage.** 1 in 40, and only while
 you are recovering:
 
 ```
@@ -85,11 +171,11 @@ you are recovering:
 ```
 
 That last one is not a bug. A handful of lines are in languages that are not
-yours, each carrying a word that does not exist in yours — *saudade*,
+yours, each carrying a word that does not exist in yours: *saudade*,
 *Feierabend*, *dépaysement*. No gloss, no translation, once per session at most.
 If you want to know what it means, you get up.
 
-**And almost never** — 1 in 300, and only at that exact moment:
+**And almost never.** 1 in 300, and only at that exact moment:
 
 ```
 ▐ - ▌>  ⌐ four minutes past four. nobody is awake but us and the fans.
@@ -110,7 +196,7 @@ If you want to know what it means, you get up.
 **The rare lines are gated on recovering, never on hours logged.** An encounter
 system rewards whatever it takes to trigger an encounter, so in a tool about
 fatigue, gating rarity on session length would pay you to keep working. Chasing
-these means resting. There is no counter, no dex, no "12/40 seen" — a collection
+these means resting. There is no counter, no dex, no "12/40 seen": a collection
 UI turns this into grinding no matter how the gate is written.
 
 Sampling is **without replacement**: the pool is shuffled, consumed in order and
@@ -132,7 +218,7 @@ are the rules, are in [VOICE.md](VOICE.md).
 ## the note moves only when you stop
 
 While you work, the slot beside the beak holds a still `♪`. Once you have
-actually been away from the keyboard, it starts moving — and it slows down as
+actually been away from the keyboard, it starts moving, and it slows down as
 the bird wilts.
 
 ```
@@ -150,7 +236,7 @@ That is the same inversion the rare lines use, and it is not an accident.
 My girlfriend kept telling me I spend too much time at the computer. She was
 right, but I needed to see it for myself.
 
-Miners used to bring canaries underground — a living warning system, silent
+Miners used to bring canaries underground: a living warning system, silent
 until something was wrong. I liked that image: a creature that absorbs the
 environment and shows you its state without asking you to think about it. The
 other reference is [Birdie by Rosendahl](https://us.rosendahl.com/pages/birdie),
@@ -190,7 +276,7 @@ difficulty remaining awake* (7), *extremely sleepy, fighting sleep* (9).
 |---|---|---|
 | fresh | 1 | extremely alert |
 | chirpy | 3 | alert |
-| tired | 5 | neither alert nor sleepy — the neutral midpoint, **not** impaired |
+| tired | 5 | neither alert nor sleepy, the neutral midpoint, **not** impaired |
 | worn | **7** | sleepy. **fatigue-risk protocols call for a break here** |
 | dead | 9 | fighting sleep |
 
@@ -198,9 +284,9 @@ That is why `CANARY_MIN_SCORE=71` (worn) is the quiet threshold worth setting,
 not 46. **Tired is not a problem. Worn is.**
 
 **Time is a curve, not a line.** The vigilance-decrement literature is
-consistent that the drop is front-loaded — roughly half of it inside the first
+consistent that the drop is front-loaded, roughly half of it inside the first
 15 minutes, reaction times climbing reliably past 30, costs steepening after 60
-— and then it flattens instead of continuing straight up:
+and then it flattens instead of continuing straight up:
 
 ```
 15m→7   30m→14   1h→26   2h→43   3h→55   5h→72   8h→86   12h→97
@@ -215,19 +301,19 @@ the dead bird into wallpaper.
 02:00–06:00 and deepest 02:00–04:00; attention bottoms out 04:00–07:00; there is
 a genuine post-lunch dip 13:00–16:00 that is circadian, not caused by lunch; and
 17:00–21:00 is the evening *wake maintenance zone*, where alertness is high. The
-old rule — a flat ×1.3 from 22:00 to 07:00 — penalised you hardest while you
+old rule, a flat ×1.3 from 22:00 to 07:00, penalised you hardest while you
 were at your sharpest and treated 23:00 exactly like 03:00.
 
 **That curve's *shape* is population-wide; its *phase* is yours.** The literature
 above describes someone who gets up around seven. A chronotype shifts by hours
 between people, and for one person it shifts with the season and with whatever
-they are in the middle of — so a curve nailed to the wall clock punishes a
+they are in the middle of, so a curve nailed to the wall clock punishes a
 04:00 sleeper exactly when they are sharpest and forgives them exactly when they
 are falling over. A `CANARY_CHRONO_OFFSET` knob would fix that once and then
 quietly rot, which is what every hand-set calibration does.
 
 So canary measures the phase instead. It keeps 24 counters, one per hour,
-recording that you were awake in that hour, and halves all of them daily — a
+recording that you were awake in that hour, and halves all of them daily, with a
 half-life near eleven days, fast enough to follow a schedule that moves,
 slow enough that one late night does not repaint it. The centre of that
 histogram, against the 07:00 riser the curve assumes, is the rotation:
@@ -249,7 +335,7 @@ a month of one night owl's actual activity, the longest clean gap was four
 hours, because an irregular sleeper has no single hour they are reliably asleep
 in. The mean uses all twenty-four at once, so a schedule that wobbles by three
 hours a night still has a stable centre. `R` is how concentrated that histogram
-is — 1.0 is one hour, 0 is no schedule at all — and below 0.15, or before a few
+is: 1.0 is one hour, 0 is no schedule at all. Below 0.15, or before a few
 days of evidence, canary says nothing and keeps the textbook curve.
 
 `canary chrono --bootstrap` seeds the histogram from macOS's own screen-time
@@ -259,12 +345,12 @@ history, so it works this week instead of next month. Nothing leaves the machine
 available and would not help: `powermetrics` refuses to report SMC temperatures
 to a non-root user on Apple Silicon, the keys are in neither `ioreg` nor
 `sysctl`, and a status line that asks for `sudo` on every refresh is not a
-status line. It would also be measuring the wrong thing — a hot laptop at 09:00
+status line. It would also be measuring the wrong thing: a hot laptop at 09:00
 is a render, not a tired person.
 
 **Errors and reps are the best-evidenced signals canary has.** Mental fatigue
-reliably increases error rates *and* perseveration — continuing to repeat an
-action that is not working — which is exactly what `reps` counts. That makes the
+reliably increases error rates *and* perseveration, meaning it keeps repeating an
+action that is not working, which is exactly what `reps` counts. That makes the
 Claude Code bird the better instrument: the shell bird can only see time and
 typing, and `avg_cmd_len` in particular has no evidence behind it at all.
 
@@ -276,7 +362,7 @@ bird instead of asking yourself how you feel.
 
 That finding also fixes the anti-habituation rule. canary calms a dead bird to
 worn when today is no worse than your own recent average, because a bird that is
-dead every day carries no information — **but not during a streak.** Two or more
+dead every day carries no information. **But not during a streak.** Two or more
 consecutive days past your limit is precisely the case where you cannot feel it,
 so the bird stays dead and the `✕ N nights` line keeps counting.
 
@@ -288,7 +374,7 @@ rather than peer review. Hard-coding it would be inventing precision.
 
 **Sources**
 
-- Åkerstedt & Gillberg, *Subjective and objective sleepiness in the active individual* — the KSS; validated against reaction-time lapses, EEG alpha/theta and slow eye movements.
+- Åkerstedt & Gillberg, *Subjective and objective sleepiness in the active individual*. The KSS, validated against reaction-time lapses, EEG alpha/theta and slow eye movements.
 - Åkerstedt & Folkard, *The three-process model of alertness and its extension to performance, sleep latency, and sleep length*, SLEEP.
 - van der Linden, Frese & Meijman, *Mental fatigue and the control of cognitive processes: effects on perseveration and planning*, Acta Psychologica (2003).
 - Van Dongen, Maislin, Mullington & Dinges, *The cumulative cost of additional wakefulness*, SLEEP 26(2):117–126 (2003).
@@ -319,17 +405,17 @@ Here the bird watches your **coding session**, not your shell. Claude Code pipes
 its session JSON in on every refresh; canary reads the duration and walks the
 transcript for signals the shell bird cannot see:
 
-- **turns** — your actual prompts, tool-call chatter filtered out
-- **errors** — failed tool calls, a decent proxy for frustration
-- **reps** — the same command fired back-to-back, capped so a polling loop cannot bury the bird
+- **turns**: your actual prompts, tool-call chatter filtered out
+- **errors**: failed tool calls, a decent proxy for frustration
+- **reps**: the same command fired back-to-back, capped so a polling loop cannot bury the bird
 
 `canary settings install` wires it: no `jq`, a backup beside the file, a
 symlinked `settings.json` written *through* rather than replaced, and a file
 with comments in it left alone with a message instead of silently reformatted.
 `canary settings remove` takes back only canary's segment.
 
-**Multi-day debt.** A tiny `~/.canary/history` — one `epoch-day peak` line per
-day, pruned to ten — means the bird does not reset to fresh just because you
+**Multi-day debt.** A tiny `~/.canary/history`, one `epoch-day peak` line per
+day, pruned to ten, means the bird does not reset to fresh just because you
 opened a new session. Yesterday's peak carries over, halving each day, and fades
 after four or five days of rest. Two or more consecutive days past the limit add
 a `✕ N nights past your limit` line that keeps counting.
@@ -372,56 +458,6 @@ are awake in).
 
 </details>
 
-## install, the long way
-
-```sh
-# read it first — good instinct, `curl | sh` runs code sight-unseen
-git clone https://github.com/thousandflowers/canary
-cd canary
-less install.sh
-sh install.sh              # builds from source if you have Go
-
-# or, if you already have Go
-go install github.com/thousandflowers/canary/cmd/canary@latest
-
-# or the one-liner
-curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | sh
-
-# only the Claude Code bird — your shell rc is never touched
-sh install.sh --claude-only
-curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | CANARY_CLAUDE_ONLY=1 sh
-```
-
-zsh, bash and fish. macOS and Linux, amd64 and arm64. A UTF-8 terminal.
-`sh uninstall.sh` takes back the rc lines, the status line and `~/.canary`.
-
-In a terminal the installer names what it found — platform, shell, where the
-binary is going — and the bird sings while it works, the same note pattern a
-fresh bird animates with during a break. The last word is the binary's own: it
-runs what it just installed and lets it draw itself with a line from the corpus
-compiled into it. Into a pipe, a CI log or with `NO_COLOR` or `CANARY_NO_ANIM`
-set, it is the same words with no cursor games.
-
-![the installer, singing the step it is on](assets/install.gif)
-
-<details>
-<summary>upgrading from 0.x</summary>
-
-0.x was three shell scripts installed into `~/.canary`. v1.0 is one binary and
-nothing else: run `install.sh` again, or `sh uninstall.sh` first if you want to
-be thorough — it recognises the old source line and takes it back.
-
-Two things changed on purpose:
-
-- **`canary on` / `canary off` are gone.** A binary cannot change the
-  environment of the shell that ran it. `CANARY_DISABLED=1` still works.
-- **The bird is per-person now, not per-terminal.** Three windows used to mean
-  three independent birds, while the file the status line read was overwritten
-  by whichever of them ran a command last. One state file, shared. Idle gaps
-  still do not count, so a window you are not typing in ages nothing.
-
-</details>
-
 ## see it without installing it
 
 ```sh
@@ -438,7 +474,7 @@ installed bird, and the numbers in its status row genuinely score the band they
 appear under.
 
 <details>
-<summary>one state at a time — about 10 KB each</summary>
+<summary>one state at a time, about 10 KB each</summary>
 
 A single state is an example, not a session, so these carry no status row:
 reporting minutes and turns for one would be inventing a session that is not
@@ -454,13 +490,11 @@ happening.
 
 ## hacking
 
-[![CI](https://github.com/thousandflowers/canary/actions/workflows/ci.yml/badge.svg)](https://github.com/thousandflowers/canary/actions/workflows/ci.yml)
-
 Go 1.24+, one dependency (`runewidth`, for cell widths).
 
 ```sh
 go test ./...                     # everything, including the corpus linter
-canary lint ./phrases             # just the corpus — no Go toolchain needed
+canary lint ./phrases             # just the corpus, no Go toolchain needed
 bash test_install_uninstall.sh    # the installer, in a throwaway $HOME
 vhs demo.tape                     # re-record the gif
 ```
@@ -476,8 +510,8 @@ CI runs on ubuntu and macOS, and drives the printed hook in a real zsh, bash and
 fish to check the bird actually draws above a prompt.
 
 Still open, if you want something to do: translations (`phrases/it`,
-`phrases/fr`, …), more triggers — each needs a detector behind it, which is the
-one thing a phrase PR cannot add — and a rare line for a clean session close.
+`phrases/fr`, …), more triggers (each needs a detector behind it, which is the
+one thing a phrase PR cannot add), and a rare line for a clean session close.
 
 <details>
 <summary>where things live</summary>
