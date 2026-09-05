@@ -76,15 +76,23 @@ func settingsInstall(path string) int {
 	// Back up before the first write. The file holds the person's own Claude
 	// Code configuration, and canary is a toy bird — it does not get to be the
 	// reason that file is unrecoverable.
+	backedUp := false
 	if raw, err := os.ReadFile(path); err == nil {
-		_ = os.WriteFile(path+".canary.bak", raw, 0o600)
+		backedUp = os.WriteFile(path+".canary.bak", raw, 0o600) == nil
 	}
 
 	settings["statusLine"] = map[string]any{"type": "command", "command": newCmd}
 	if err := writeSettings(path, settings); err != nil {
 		return fail(err)
 	}
-	fmt.Printf("canary: status line wired into %s (backup: %s.canary.bak)\n", path, path)
+	// Only a backup that exists is worth naming. There is nothing to back up
+	// when Claude Code has no settings.json yet, and promising a file that was
+	// never written is the kind of small lie that costs trust in the big ones.
+	if backedUp {
+		fmt.Printf("canary: status line wired into %s (backup: %s.canary.bak)\n", path, path)
+		return 0
+	}
+	fmt.Printf("canary: status line wired into %s\n", path)
 	return 0
 }
 
