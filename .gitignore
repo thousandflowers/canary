@@ -4,3 +4,4 @@
 *.tmp.*
 /canary-bin
 /dist/
+/install-raw.gif

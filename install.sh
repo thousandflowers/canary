@@ -129,13 +129,16 @@ ensure_bash_chain() {
 ensure_line() {
   rc=$1
   line=$2
+  # Named, because the PATH line and the hook both come through here and two
+  # identical "added the hook" lines read like the installer did it twice.
+  what=${3:-hook}
   mkdir -p "$(dirname "$rc")"
   touch "$rc"
   if grep -qF "$line" "$rc" 2>/dev/null; then
-    echo "canary: rc already wired ($rc)"
+    echo "canary: rc already has the $what ($rc)"
   else
     printf '\n%s\n%s\n' "$CANARY_RC_MARK" "$line" >> "$rc"
-    echo "canary: added the hook to $rc"
+    echo "canary: added the $what to $rc"
   fi
 }
 
@@ -150,9 +153,9 @@ ensure_path() {
     *":$CANARY_BIN_DIR:"*) return 0 ;;
   esac
   if [ "$shell_name" = fish ]; then
-    ensure_line "$rc" "fish_add_path $CANARY_BIN_DIR"
+    ensure_line "$rc" "fish_add_path $CANARY_BIN_DIR" "PATH line"
   else
-    ensure_line "$rc" "export PATH=\"$CANARY_BIN_DIR:\$PATH\""
+    ensure_line "$rc" "export PATH=\"$CANARY_BIN_DIR:\$PATH\"" "PATH line"
   fi
 }
 
@@ -321,8 +324,12 @@ main() {
 
   cursor_show
   if [ "$ANIM" = 1 ]; then
-    printf '\033[2B'
-    # Everything the steps said, under the bird instead of scrolling through it.
+    # Wipe the bird that sang. The one that signs off below is the same bird —
+    # leaving both on screen makes an install look like it installed two.
+    # The cursor is on the first of its two rows, and stays there: the step log
+    # takes the space the animation was using.
+    printf '\033[2K\033[1B\033[2K\033[1A\r'
+    # Everything the steps said, where the bird was instead of under it.
     sed 's/^/  /' "$STEP_LOG"
   fi
 
