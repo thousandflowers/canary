@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // transcript writes a JSONL file and returns the Claude Code payload pointing
@@ -85,7 +87,7 @@ func TestAMalformedPayloadIsQuietNotFatal(t *testing.T) {
 	// This runs on every refresh. A bad frame makes the bird quiet; it must
 	// never crash into Claude Code's status row.
 	got := FromClaudeCode([]byte(`{"transcript_path": not json`))
-	if got != (Signals{StatName: "t"}) {
+	if !reflect.DeepEqual(got, Signals{StatName: "t"}) {
 		t.Errorf("a malformed payload produced signals: %+v", got)
 	}
 }
@@ -145,7 +147,7 @@ func TestShellStateFallback(t *testing.T) {
 		t.Fatal("a valid state file was refused")
 	}
 	want := Signals{Minutes: 30, Turns: 12, AvgLen: 30, StatName: "p"}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
@@ -290,5 +292,32 @@ func TestParseIntAcceptsAPlainNumberAndNothingElse(t *testing.T) {
 	}
 	if n, ok := parseInt(" 42 "); !ok || n != 42 {
 		t.Errorf("parseInt(\" 42 \") = %d, %v", n, ok)
+	}
+}
+
+func TestStampsAreSortedAndSurviveJunk(t *testing.T) {
+	_, in := transcript(t,
+		`{"type":"user","message":{"content":"a"},"timestamp":"2026-09-07T14:00:00.500Z"}`,
+		`{"type":"user","message":{"content":"b"},"timestamp":"not a time"}`,
+		`{"type":"user","message":{"content":"out of order"},"timestamp":"2026-09-07T13:00:00Z"}`,
+		`{"type":"assistant","message":{"content":"no timestamp at all"}}`,
+		// A tool result quoting a payload: the entry's own stamp is the last one.
+		`{"type":"user","message":{"content":[{"tool_result":"{\"timestamp\":\"2099-01-01T00:00:00Z\"}"}]},"timestamp":"2026-09-07T13:30:00Z"}`,
+	)
+	want := []int64{
+		time.Date(2026, 9, 7, 13, 0, 0, 0, time.UTC).Unix(),
+		time.Date(2026, 9, 7, 13, 30, 0, 0, time.UTC).Unix(),
+		time.Date(2026, 9, 7, 14, 0, 0, 0, time.UTC).Unix(),
+	}
+	got := FromClaudeCode(in).Stamps
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Stamps = %v, want %v (sorted, junk dropped, the line's own stamp)", got, want)
+	}
+}
+
+func TestANegativeDurationIsZeroMinutes(t *testing.T) {
+	in := []byte(`{"cost":{"total_duration_ms":-120000},"transcript_path":"/nonexistent/x.jsonl"}`)
+	if got := FromClaudeCode(in).Minutes; got != 0 {
+		t.Errorf("minutes = %d, want 0", got)
 	}
 }

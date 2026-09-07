@@ -21,11 +21,14 @@ Inside Claude Code, as a plugin:
 /plugin install canary@canary
 ```
 
-The next session start installs the binary if there is none, built from source
-when Go is around and the release binary otherwise, and wires the status line.
-Your shell rc is never touched. That is the whole install for the Claude Code
-bird alone; `/plugin uninstall canary@canary` and `canary settings remove` take
-it back out.
+The next session start fetches the release binary if there is none and wires
+the status line; `/plugin update canary@canary` moves the binary along with
+the plugin. (A build from source is `sh install.sh` in the plugin's own
+checkout, under `~/.claude/plugins/cache/canary/`.) Your
+shell rc is never touched, and neither is your PATH: the binary lives at
+`~/.local/bin/canary`, which is where to call it from. That is the whole
+install for the Claude Code bird alone. `/plugin uninstall canary@canary`, then
+`~/.local/bin/canary settings remove`, take it back out.
 
 For the shell bird too, or just a binary on your PATH, pick one. All three
 land the same binary.
@@ -49,12 +52,12 @@ knows about. Naming the tag (`@v1.3.0`) is exact.
 Then wire the half you want. Both, or either one on its own:
 
 ```sh
-eval "$(canary init zsh)"   # above your shell prompt (bash and fish too)
+eval "$(canary init zsh)"   # above your shell prompt; bash too. fish: canary init fish | source
 canary settings install     # inside Claude Code's status line
 ```
 
-The one-liner wires both for you, and does so again every time it is run. For
-the Claude Code bird alone with a shell rc left untouched, the plugin above, or:
+The one-liner wires both for you, and does so again every time it is run. The
+plugin above leaves the rc alone; so does the one-liner, told to:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | CANARY_CLAUDE_ONLY=1 sh
@@ -68,14 +71,14 @@ Windows means WSL, running the Linux binary. CI drives the hooks in a real
 zsh, bash and fish on Linux every push; WSL itself nobody here has tried, so
 if you run it there, say how it went.
 
-`sh uninstall.sh` takes back the rc lines, the status line and `~/.canary`.
-Nothing else on your machine was touched.
+`sh uninstall.sh` takes back the rc lines, the status line, the binary and
+`~/.canary`. Nothing else on your machine was touched.
 
 ## reading it first
 
-Good instinct: `curl | sh` runs code sight-unseen. The script is 363 lines and it is
+Good instinct: `curl | sh` runs code sight-unseen. The script is 396 lines and it is
 meant to be read. The plugin runs the same script, from its own checkout of this
-repository, and only when there is no binary to find.
+repository, when there is no binary to find or the plugin has moved on.
 
 ```sh
 git clone https://github.com/thousandflowers/canary
@@ -255,8 +258,9 @@ evening.
 The topical ones expire on their own: a file named for a year is read for two
 years and then stops being read, without anybody having to decide anything.
 
-Every line lives in [`phrases/en/`](phrases/en) as a plain `.txt` file, one per
-line. Adding one is a pull request with no code in it, and `canary lint` answers
+Every line lives under [`phrases/`](phrases) as a plain `.txt` file, one per
+line: the English in `en/`, the untranslated ones in `mine/`, outside any
+language on purpose. Adding one is a pull request with no code in it, and `canary lint` answers
 every mechanical question about it before a human looks. The rules, and why they
 are the rules, are in [VOICE.md](VOICE.md).
 
@@ -297,14 +301,17 @@ So: one bird, five states, no internet. It sits there and wilts while you work.
 ```
 shell:        time(minutes) + commands/2 + avg_cmd_len/10
 Claude Code:  time(minutes) + turns/2    + errors·3 + reps·2
-both          × the time-of-day curve  + multi-day debt   (capped at 100)
+both          × the time-of-day curve
+Claude Code   + multi-day debt                             (capped at 100)
 
 0–20 fresh   21–45 chirpy   46–70 tired   71–90 worn   91–100 dead
 ```
 
 *minutes* means **active** minutes: a gap longer than five minutes is a break
 and does not count. Leave the terminal open all afternoon; the bird only ages
-while you actually work.
+while you actually work. In Claude Code that is read off the transcript, turn
+by turn and tool call by tool call, not off the wall clock the session JSON
+offers.
 
 **Honest caveat:** this is an *activity* proxy, not cognitive load. A deep flow
 session and a frustrating debug look alike to it, and the inputs are keystrokes,
@@ -360,9 +367,9 @@ are falling over. A `CANARY_CHRONO_OFFSET` knob would fix that once and then
 quietly rot, which is what every hand-set calibration does.
 
 So canary measures the phase instead. It keeps 24 counters, one per hour,
-recording that you were awake in that hour, and halves all of them daily, with a
-half-life near eleven days, fast enough to follow a schedule that moves,
-slow enough that one late night does not repaint it. The centre of that
+recording that you were awake in that hour, and decays all of them by a
+sixteenth every day, a half-life near eleven days: fast enough to follow a
+schedule that moves, slow enough that one late night does not repaint it. The centre of that
 histogram, against the 07:00 riser the curve assumes, is the rotation:
 
 ```
@@ -450,9 +457,10 @@ Claude Code sends, it counts the session:
 Wanting only this bird is a normal thing to want, and the plugin is the install
 that cannot do otherwise: there is no shell half for it to wire. `brew install`
 wires nothing by itself either, so stopping after `canary settings install` is
-enough; the one-liner takes `--claude-only` (or `CANARY_CLAUDE_ONLY=1`) for the
-same thing. Already wired both and want the shell one gone? Drop the `canary`
-line from your rc, or `canary settings remove` for the opposite trade.
+enough; `install.sh` takes `--claude-only`, and the one-liner
+`CANARY_CLAUDE_ONLY=1`, for the same thing. Already wired both and want the
+shell one gone? Drop the lines marked `# canary` from your rc, or
+`canary settings remove` for the opposite trade.
 
 Here the bird watches your **coding session**, not your shell. Claude Code pipes
 its session JSON in on every refresh; canary reads the duration and walks the
@@ -477,7 +485,7 @@ a `✕ N nights past your limit` line that keeps counting.
 
 ```sh
 CANARY_DISABLED=1          # bird sleeps
-CANARY_MIN_SCORE=71        # only draw once it matters (worn+). 0 = always
+CANARY_MIN_SCORE=71        # only draw once it matters (worn+). default 0 = always
 CANARY_SHOW_SCORE=1        # show the number
 CANARY_QUIET=1             # bird and note, no phrases
 CANARY_ASCII=1             # ASCII instead of ⌐ and ♪
@@ -492,7 +500,7 @@ CANARY_IDLE_THRESHOLD=300  # a gap longer than this (sec) is a break, not work
 CANARY_NIGHT_MULT=150      # multiplier at the bottom of the circadian trough
                            # (02:00–04:00). scales the whole curve, so 100 = off
 CANARY_ERR_WEIGHT=3        # points per failed tool call
-CANARY_REP_WEIGHT=2        # points per extra back-to-back repeat (capped at 5)
+CANARY_REP_WEIGHT=2        # points per extra back-to-back repeat (five counted at most)
 CANARY_DEBT_MAX=30         # cap on yesterday's fatigue carried into today
 CANARY_DEAD_ABSOLUTE=1     # always show the dead bird above 90, streak or not
 CANARY_RESERVE_COLS=0      # cells to book on the bird's row for whatever shares it
@@ -506,14 +514,15 @@ Everything canary keeps lives in `~/.canary`, is plain text, and never leaves
 your machine: `canary-state` (this session's counters), `history` (daily peaks),
 `phrase-state` (the last band and line), `recent` (the last ten lines said),
 `bag.json` (where each shuffle is up to), `sessions` (today's session ids),
-`git-cache` (the last answer `git status` gave), `chrono` (which hours you
-are awake in).
+`active` (minutes actually worked, per Claude Code session), `git-cache` (the
+last answer `git status` gave), `chrono` (which hours you are awake in).
 
 </details>
 
 ## see it without installing it
 
 ```sh
+canary score                # the number, for the shell bird; canary reset starts it over
 canary chrono               # what it has learned about your body clock
 canary chrono --bootstrap   # seed that from macOS's own screen-time history
 canary demo                 # all five states, about twenty seconds
@@ -555,8 +564,7 @@ vhs install.tape                  # the installer (its header has the trim)
 ```
 
 `install.tape` records a window three rows tall and ffmpeg keeps the seconds
-where the bird is the only thing moving. The command is in the tape's header,
-along with why the crop is vertical only.
+where the bird is the only thing moving. The command is in the tape's header.
 
 **Coverage is 100%, and CI fails below it.** Not because a number is the point,
 but because the branches that go untested in a tool like this are exactly the

@@ -29,6 +29,9 @@ case "${0:-}" in
   # `|| SCRIPT_DIR=""` rather than `&& pwd || true`: the latter is SC2015 and
   # reads like if-then-else when it isn't.
   */*) SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd) || SCRIPT_DIR="" ;;
+  # `sh install.sh` from inside the checkout: a bare name, relative to here.
+  # `curl | sh` lands here too, with $0 = sh and no such file, so nothing is set.
+  *)   if [ -f "$0" ]; then SCRIPT_DIR=$(pwd); fi ;;
 esac
 
 # --- os_arch, in the spelling the release assets use -------------------------
@@ -51,17 +54,45 @@ platform() {
 # --- get a canary binary into $CANARY_BIN ------------------------------------
 # Source first when we are in a clone with Go available: it is faster than the
 # network and it installs exactly the tree you are looking at.
+# The version a source build is stamped with. A git checkout gets the binary's
+# own default, `dev`, and at run time Go's build info fills in what the
+# checkout is (a tag, or a tag plus how far past it). An export without .git —
+# the copy Claude Code keeps of the plugin, a source tarball — has no build
+# info to fall back on and would say `dev`, so there the version comes from
+# the plugin manifest, which release CI holds equal to the tag.
+source_version() {
+  v=""
+  [ -d "$SCRIPT_DIR/.git" ] || v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SCRIPT_DIR/.claude-plugin/plugin.json" 2>/dev/null)
+  printf '%s' "${v:-dev}"
+}
+
 install_binary() {
   mkdir -p "$CANARY_BIN_DIR"
 
-  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/go.mod" ] && command -v go >/dev/null 2>&1; then
+  # Every path lands the binary beside its destination and renames it into
+  # place: a rename is atomic, so a shell hook or a status line that runs
+  # canary mid-install gets the old bird or the new one, never half of one.
+  # (macOS also kills a binary overwritten in place while it runs.) `go build
+  # -o` in particular refuses a destination that is not already an object file.
+  staged="$CANARY_BIN.tmp.$$"
+  # CANARY_FETCH=1 takes the release binary even where a build is possible.
+  # The plugin's hook sets it: a `go build` inside Claude Code's start-up, with
+  # a cold module cache behind a slow or blocked proxy, is a stall nobody can
+  # see the cause of, and the download is a few seconds with one failure mode.
+  if [ "${CANARY_FETCH:-0}" != 1 ] && [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/go.mod" ] && command -v go >/dev/null 2>&1; then
     echo "canary: building from source"
-    ( cd "$SCRIPT_DIR" && go build -o "$CANARY_BIN" ./cmd/canary )
+    ( cd "$SCRIPT_DIR" && go build "-ldflags=-X main.version=$(source_version)" -o "$staged" ./cmd/canary ) || {
+      rm -f "$staged"
+      echo "canary: the build failed; nothing was installed" >&2
+      return 1
+    }
+    mv -f "$staged" "$CANARY_BIN"
     return 0
   fi
   if [ -n "$SCRIPT_DIR" ] && [ -x "$SCRIPT_DIR/canary" ] && [ ! -d "$SCRIPT_DIR/canary" ]; then
-    cp "$SCRIPT_DIR/canary" "$CANARY_BIN"
-    chmod +x "$CANARY_BIN"
+    cp "$SCRIPT_DIR/canary" "$staged"
+    chmod +x "$staged"
+    mv -f "$staged" "$CANARY_BIN"
     return 0
   fi
 
@@ -74,8 +105,9 @@ install_binary() {
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/canary.XXXXXX")
   echo "canary: downloading $plat"
   if curl -fsSL "$url" | tar -xzf - -C "$tmp" 2>/dev/null && [ -f "$tmp/canary" ]; then
-    cp "$tmp/canary" "$CANARY_BIN"
-    chmod +x "$CANARY_BIN"
+    cp "$tmp/canary" "$staged"
+    chmod +x "$staged"
+    mv -f "$staged" "$CANARY_BIN"
     rm -rf "$tmp"
     return 0
   fi
@@ -276,6 +308,7 @@ canary installer
   sh install.sh --help          this
 
   CANARY_CLAUDE_ONLY=1          same as --claude-only, for `curl ... | sh`
+  CANARY_FETCH=1                download the release binary even if Go could build one
   CANARY_BIN_DIR=DIR            where to put the binary (default ~/.local/bin)
 USAGE
 }

@@ -11,8 +11,11 @@ import (
 )
 
 // The awk block in canary-statusline.sh is the specification for debt, the
-// personal baseline and the night streak. It is reproduced here verbatim so the
-// Go is diffed against the real thing rather than against a paraphrase of it.
+// personal baseline and the night streak. It is reproduced here so the Go is
+// diffed against the real thing rather than against a paraphrase of it, with
+// one correction: the shell counted a day that peaked at exactly 90 as a night
+// past the limit while scoring 90 as worn, so the streak could start on days
+// that were never dead. The oracle now says `>90`, as the dead band does.
 const awkOracle = `awk -v today="$1" -v dmax="$2" '
   { d[NR]=$1+0; p[NR]=$2+0; n=NR }
   END {
@@ -27,7 +30,7 @@ const awkOracle = `awk -v today="$1" -v dmax="$2" '
     nights=0; check=today-1; found=1;
     while (found) {
       found=0;
-      for (i=1;i<=n;i++) if (d[i]==check && p[i]>=90) { found=1; break }
+      for (i=1;i<=n;i++) if (d[i]==check && p[i]>90) { found=1; break }
       if (found) { nights++; check-- }
     }
     printf "%d %d %d", int(debt), personal, nights;
@@ -90,7 +93,8 @@ func TestSummarizeMatchesAwk(t *testing.T) {
 			{today - 6, 96}, {today - 7, 97}, {today - 8, 98}, {today - 9, 99}, {today - 10, 100},
 		}},
 		{"a gap in the middle", []Entry{{today - 1, 95}, {today - 5, 95}, {today - 9, 95}}},
-		{"exactly at the streak threshold", []Entry{{today - 1, 90}, {today - 2, 89}}},
+		{"exactly at the limit is not past it", []Entry{{today - 1, 90}, {today - 2, 89}}},
+		{"one past the limit is", []Entry{{today - 1, 91}, {today - 2, 91}, {today - 3, 90}}},
 	}
 
 	for _, c := range cases {

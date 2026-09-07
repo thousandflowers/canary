@@ -120,7 +120,12 @@ func Summarize(entries []Entry, today, debtMax int) Summary {
 	}
 }
 
-// streak walks back from yesterday while each day has a peak at or past 90.
+// Limit is the score a day has to pass to count as a night past your limit.
+// The dead band starts at 91; a day that peaked at exactly 90 was worn, and
+// worn is the band that means stop, not proof that you did not.
+const Limit = 90
+
+// streak walks back from yesterday while each day has a peak past the limit.
 // A gap ends it: the point is consecutive nights, and one recovered day is
 // exactly the thing that should reset the count.
 func streak(entries []Entry, today int) int {
@@ -133,7 +138,7 @@ func streak(entries []Entry, today int) int {
 	}
 	n := 0
 	for day := today - 1; ; day-- {
-		if p, ok := peaks[day]; !ok || p < 90 {
+		if p, ok := peaks[day]; !ok || p <= Limit {
 			return n
 		}
 		n++

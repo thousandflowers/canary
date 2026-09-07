@@ -35,7 +35,10 @@ type Config struct {
 	SessionFile string
 	GitCache    string
 	ChronoFile  string
-	PhraseDir   string // empty means "use the embedded corpus"
+	// ActiveFile is the per-session ledger of minutes actually worked in
+	// Claude Code, where the session JSON only offers the wall clock.
+	ActiveFile string
+	PhraseDir  string // empty means "use the embedded corpus"
 
 	// Behaviour
 	Disabled      bool
@@ -88,6 +91,7 @@ func FromEnv() Config {
 		// When you are awake, hour by hour, decayed daily. It is what aims the
 		// time-of-day curve at your body clock instead of a textbook one.
 		ChronoFile: envPath("CANARY_CHRONO_FILE", filepath.Join(dir, "chrono")),
+		ActiveFile: envPath("CANARY_ACTIVE_FILE", filepath.Join(dir, "active")),
 
 		Disabled:     truthy(os.Getenv("CANARY_DISABLED")),
 		Quiet:        truthy(os.Getenv("CANARY_QUIET")),

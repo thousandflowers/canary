@@ -149,13 +149,10 @@ func TestRecordCountsAnHourOnlyOnce(t *testing.T) {
 		t.Fatalf("first record: slot=%d changed=%v", l.Slots[15], changed)
 	}
 
-	// Nine more commands in the same hour, each its own activity.
+	// Nine more commands in the same hour, each its own activity: the marker
+	// is followed (so the hour they happen in is known) but the slot is not.
 	for i := 1; i <= 9; i++ {
-		next, changed := Record(l, base+i*60, 15, base+i*60)
-		if changed {
-			t.Fatalf("command %d in the same hour asked for a write", i)
-		}
-		l = next
+		l, _ = Record(l, base+i*60, 15, base+i*60)
 	}
 	if l.Slots[15] != Weight {
 		t.Errorf("slot %d after ten commands in one hour, want %d", l.Slots[15], Weight)
@@ -198,6 +195,43 @@ func TestRepaintsAllNightRecordNothing(t *testing.T) {
 	l, changed := Record(l, evening+10*3600, 8, 8)
 	if !changed || l.Slots[8] != Weight {
 		t.Errorf("a real turn after the night: slot=%d changed=%v", l.Slots[8], changed)
+	}
+}
+
+// Claude Code passes its turn count as the marker and repaints on its own. The
+// hour that gets the count has to be the hour the turn was typed in, not the
+// hour a repaint first noticed the count had moved.
+func TestTurnsCreditTheHourTheyHappenIn(t *testing.T) {
+	const day = 20000
+	at := func(h, m int) int { return day*24*3600 + h*3600 + m*60 }
+
+	l, _ := Record(Log{}, at(13, 5), 13, 1) // first turn at 13:05
+	for turn := 2; turn <= 5; turn++ {      // four more through 13:30
+		l, _ = Record(l, at(13, 5+turn*5), 13, turn)
+	}
+	for m := 0; m < 60; m += 5 { // idle: the row repaints through 14:xx, turns still 5
+		l, _ = Record(l, at(14, m), 14, 5)
+	}
+	l, _ = Record(l, at(15, 0), 15, 5)  // and the 15:00 repaint
+	l, _ = Record(l, at(15, 20), 15, 6) // first real turn of the afternoon
+
+	if l.Slots[13] != Weight || l.Slots[14] != 0 || l.Slots[15] != Weight {
+		t.Errorf("slots 13/14/15 = %d/%d/%d, want %d/0/%d", l.Slots[13], l.Slots[14], l.Slots[15], Weight, Weight)
+	}
+}
+
+func TestCreditedSurvivesSaveLoadAndDecay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "chrono")
+	l := Log{Day: 100, Hour: 2415, Seen: 3, Credited: 2415}
+	l.Slots[15] = Weight
+	if err := Save(path, l); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path); got != l {
+		t.Errorf("round trip lost something: %+v != %+v", got, l)
+	}
+	if got := Decayed(l, 101); got.Credited != l.Credited {
+		t.Errorf("decay forgot the credited hour: %d", got.Credited)
 	}
 }
 
