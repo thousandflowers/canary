@@ -38,6 +38,20 @@ jobs:
             echo "copy and needs no token."
             exit 1
           fi
+      - name: the plugin manifest must say the same version as the tag
+        # The Claude Code plugin is installed straight from this repository,
+        # not from a release artifact, so the version its users see is whatever
+        # .claude-plugin/plugin.json says. Nothing else compares the two, and a
+        # manifest left behind is only found by whoever trusted it.
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          got=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' .claude-plugin/plugin.json)
+          if [ "$got" != "$want" ]; then
+            echo ".claude-plugin/plugin.json says \"version\": \"$got\", the tag is $GITHUB_REF_NAME"
+            echo "bump it to $want and cut a new tag"
+            exit 1
+          fi
+          echo "plugin manifest is at $got"
       - name: use the notes written for this tag, if there are any
         # goreleaser's generated changelog is a list of commit subjects. That is
         # the right default, and the wrong thing for a release anybody has to

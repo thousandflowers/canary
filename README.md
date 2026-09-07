@@ -14,7 +14,21 @@ No color. No internet. No telemetry. One small binary and some block art.
 
 ## install
 
-Pick one. All three land the same binary.
+Inside Claude Code, as a plugin:
+
+```
+/plugin marketplace add thousandflowers/canary
+/plugin install canary@canary
+```
+
+The next session start installs the binary if there is none, built from source
+when Go is around and the release binary otherwise, and wires the status line.
+Your shell rc is never touched. That is the whole install for the Claude Code
+bird alone; `/plugin uninstall canary@canary` and `canary settings remove` take
+it back out.
+
+For the shell bird too, or just a binary on your PATH, pick one. All three
+land the same binary.
 
 ```sh
 # Homebrew
@@ -27,10 +41,10 @@ curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install
 go install github.com/thousandflowers/canary/cmd/canary@latest
 ```
 
-`canary version` reports the same release from all three. A `go install` in
+`canary version` reports the same release from all of them. A `go install` in
 the first minutes after a release can still land on the previous one: the Go
 module proxy has not listed the new tag yet, and `@latest` means the latest it
-knows about. Naming the tag (`@v1.2.1`) is exact.
+knows about. Naming the tag (`@v1.3.0`) is exact.
 
 Then wire the half you want. Both, or either one on its own:
 
@@ -39,26 +53,14 @@ eval "$(canary init zsh)"   # above your shell prompt (bash and fish too)
 canary settings install     # inside Claude Code's status line
 ```
 
-The one-liner wires both for you. For the Claude Code bird alone, and a shell
-rc left untouched:
+The one-liner wires both for you, and does so again every time it is run. For
+the Claude Code bird alone with a shell rc left untouched, the plugin above, or:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install.sh | CANARY_CLAUDE_ONLY=1 sh
 ```
 
 ![the installer, singing the step it is on](assets/install.gif)
-
-Or as a Claude Code plugin, for the status line bird alone. Inside Claude Code:
-
-```
-/plugin marketplace add thousandflowers/canary
-/plugin install canary@canary
-```
-
-The next session start installs the binary if there is none (built from
-source when Go is around, the release binary otherwise) and wires the status
-line. Your shell rc is never touched. `/plugin uninstall canary@canary` and
-`canary settings remove` take it back out.
 
 Runs on zsh, bash and fish, macOS and Linux, amd64 and arm64, in any UTF-8
 terminal. **No Windows build.** The bird lives in a POSIX shell hook, so
@@ -71,8 +73,9 @@ Nothing else on your machine was touched.
 
 ## reading it first
 
-Good instinct: `curl | sh` runs code sight-unseen. The script is 352 lines and it is
-meant to be read.
+Good instinct: `curl | sh` runs code sight-unseen. The script is 363 lines and it is
+meant to be read. The plugin runs the same script, from its own checkout of this
+repository, and only when there is no binary to find.
 
 ```sh
 git clone https://github.com/thousandflowers/canary
@@ -444,11 +447,12 @@ Claude Code sends, it counts the session:
 
 ![the same binary drawing above a shell prompt, then reading a Claude Code session](assets/halves.gif)
 
-Wanting only this bird is a normal thing to want. `brew install` wires nothing
-by itself, so stopping after `canary settings install` is enough; the one-liner
-takes `--claude-only` (or `CANARY_CLAUDE_ONLY=1`) for the same thing. Already
-wired both and want the shell one gone? Drop the `canary` line from your rc, or
-`canary settings remove` for the opposite trade.
+Wanting only this bird is a normal thing to want, and the plugin is the install
+that cannot do otherwise: there is no shell half for it to wire. `brew install`
+wires nothing by itself either, so stopping after `canary settings install` is
+enough; the one-liner takes `--claude-only` (or `CANARY_CLAUDE_ONLY=1`) for the
+same thing. Already wired both and want the shell one gone? Drop the `canary`
+line from your rc, or `canary settings remove` for the opposite trade.
 
 Here the bird watches your **coding session**, not your shell. Claude Code pipes
 its session JSON in on every refresh; canary reads the duration and walks the
@@ -582,6 +586,7 @@ one thing a phrase PR cannot add), and a rare line for a clean session close.
 | `internal/lint` | VOICE.md §6, run by `canary lint`, by CI and by the tests |
 | `internal/atomicfile` | the one way canary writes a state file |
 | `cmd/canary` | the subcommands, and the shell hooks it prints |
+| `.claude-plugin`, `hooks/` | the Claude Code plugin: two manifests and one `SessionStart` hook that wires the status line |
 
 `internal/fatigue/parity_test.go` runs the original shell arithmetic in bash and
 diffs it against the Go, every minute from 0 to 1500. The shell implementation
