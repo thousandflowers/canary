@@ -1,0 +1,19 @@
+{
+  "name": "canary",
+  "displayName": "canary",
+  "description": "A pixel-art bird that wilts in Claude Code's status line while you work. No color, no internet, no telemetry.",
+  "version": "1.3.0",
+  "author": {
+    "name": "thousandflowers",
+    "url": "https://github.com/thousandflowers"
+  },
+  "homepage": "https://github.com/thousandflowers/canary",
+  "repository": "https://github.com/thousandflowers/canary",
+  "license": "MIT",
+  "keywords": [
+    "status-line",
+    "fatigue",
+    "break-reminder",
+    "pixel-art"
+  ]
+}
