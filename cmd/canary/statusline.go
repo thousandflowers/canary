@@ -21,8 +21,16 @@ import (
 // secondsPerDay converts unix seconds to the epoch day the history file keys on.
 const secondsPerDay = 86400
 
-// deadScore is the score past which today counts as a night past your limit.
-const deadScore = 90
+// deadScore is the score past which today counts as a night past your limit:
+// the same line the history draws, so tonight's count is tomorrow's memory.
+const deadScore = history.Limit
+
+// localDay is the epoch day by the clock on the wall, not by UTC: the history
+// keys on days, and a night that ends at 02:00 in Rome is still the same night.
+func localDay(t time.Time) int {
+	_, off := t.Zone()
+	return int((t.Unix() + int64(off)) / secondsPerDay)
+}
 
 // runStatusline draws Claude Code's status row.
 //
@@ -50,19 +58,29 @@ func runStatusline(cfg config.Config) int {
 	if sig.StatName == "p" {
 		raw = fatigue.ShellRaw(sig.Minutes, sig.Turns, sig.AvgLen)
 	} else {
+		// The session JSON only offers the wall clock. Minutes are the ones
+		// actually worked, from how the transcript moved between refreshes,
+		// when that can be known; never more than the clock says.
+		if m := session.ActiveMinutes(cfg.ActiveFile, sig.SessionID, sig.Stamps, now.Unix(), cfg.IdleThreshold); m >= 0 && m < sig.Minutes {
+			sig.Minutes = m
+		}
 		raw = fatigue.ClaudeCodeRaw(sig.Minutes, sig.Turns, sig.Errors, sig.Reps, cfg.ErrWeight, cfg.RepWeight)
 	}
 	recordChrono(cfg, now, sig.Turns)
 	raw = fatigue.ApplyCircadian(raw, chrono.Shift(now.Hour(), chronoOffset(cfg)), cfg.NightMult)
 
-	today := int(now.Unix() / secondsPerDay)
+	today := localDay(now)
 	entries, _ := history.Load(cfg.HistoryFile)
 	past := history.Summarize(entries, today, cfg.DebtMax)
 
 	score := fatigue.Cap(raw + past.Debt)
 	nights := past.Nights
-	if score > deadScore {
-		nights++ // today extends the streak
+	if raw > deadScore {
+		// Today extends the streak on its own merits — the raw peak, which is
+		// what the history will remember tomorrow. Debt alone can push the
+		// score past the line, and a night the file would not count as past
+		// the limit should not be shown as one tonight.
+		nights++
 	}
 
 	// Today's peak is stored pre-debt, so yesterday's debt never compounds into

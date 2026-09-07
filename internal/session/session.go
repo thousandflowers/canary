@@ -14,8 +14,10 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // TranscriptTail is how much of the transcript is scanned, in bytes.
@@ -73,6 +75,11 @@ type Signals struct {
 	Compacted    bool // the session has been compacted at least once
 	Interrupted  bool // you stopped it mid-answer
 	RepeatedAsk  bool // the same prompt, twice
+
+	// Stamps are the unix seconds of the transcript entries in the window,
+	// oldest first, which is what ActiveMinutes measures work by. Empty when
+	// no line carried a timestamp.
+	Stamps []int64
 }
 
 // statusInput is the slice of Claude Code's session JSON the bird reads.
@@ -109,6 +116,9 @@ func FromClaudeCode(input []byte) Signals {
 		return sig
 	}
 	sig.Minutes = int(in.Cost.TotalDurationMS / 60000)
+	if sig.Minutes < 0 {
+		sig.Minutes = 0 // a negative duration is a bug upstream, not a number to print
+	}
 	sig.SessionID = in.SessionID
 	sig.Dir = in.Workspace.CurrentDir
 	if sig.Dir == "" {
@@ -218,6 +228,16 @@ func scanTranscript(r io.Reader, sig *Signals) {
 			sig.Interrupted = true
 		}
 
+		// When the session did things, for the active-minutes ledger. The
+		// entry's own timestamp is the last key on its line; anything earlier
+		// is inside a tool result or a pasted payload. Sorted at the end: a
+		// transcript is not promised to be in order.
+		if ts := valuesOf(line, `"timestamp":"`); len(ts) > 0 {
+			if at, err := time.Parse(time.RFC3339Nano, ts[len(ts)-1]); err == nil {
+				sig.Stamps = append(sig.Stamps, at.Unix())
+			}
+		}
+
 		// Every file the session touched, and how often. One file coming back
 		// again and again is the `same-file` trigger; a session with files but
 		// no test file among them is `no-tests`.
@@ -242,6 +262,8 @@ func scanTranscript(r io.Reader, sig *Signals) {
 			}
 		}
 	}
+
+	slices.Sort(sig.Stamps)
 
 	if maxRun > 1 {
 		sig.Reps = maxRun - 1

@@ -793,15 +793,75 @@ func TestStatuslineCountsTonightTowardsTheStreak(t *testing.T) {
 	state.Save(cfg.StateFile, state.State{PromptCount: 400, LenSum: 40000, ActiveSeconds: 86400})
 	// Two nights already past the limit, so the count is printed rather than
 	// only carried.
-	today := int(time.Now().Unix() / 86400)
+	today := localDay(time.Now())
 	os.MkdirAll(filepath.Dir(cfg.HistoryFile), 0o755)
 	os.WriteFile(cfg.HistoryFile, []byte(
 		strconv.Itoa(today-1)+" 99\n"+strconv.Itoa(today-2)+" 99\n"), 0o644)
 	withStdin(t, "")
 
 	out, _ := capture(t, func() int { return runStatusline(config.FromEnv()) })
-	if !strings.Contains(out, "nights past your limit") {
+	if !strings.Contains(out, "3 nights past your limit") {
 		t.Errorf("a third night was not counted:\n%s", out)
+	}
+}
+
+func TestDebtAloneDoesNotMakeTonightANightPastTheLimit(t *testing.T) {
+	// Raw 72 (five active hours, no prompts) plus yesterday's debt reaches the
+	// dead band, but the history will remember today as 72. The count shown
+	// tonight is the one that will be true tomorrow: two nights, not three.
+	isolate(t)
+	t.Setenv("CANARY_NIGHT_MULT", "100")
+	cfg := config.FromEnv()
+	state.Save(cfg.StateFile, state.State{PromptCount: 0, ActiveSeconds: 5 * 3600})
+	today := localDay(time.Now())
+	os.MkdirAll(filepath.Dir(cfg.HistoryFile), 0o755)
+	os.WriteFile(cfg.HistoryFile, []byte(
+		strconv.Itoa(today-1)+" 99\n"+strconv.Itoa(today-2)+" 99\n"), 0o644)
+	withStdin(t, "")
+
+	out, _ := capture(t, func() int { return runStatusline(config.FromEnv()) })
+	if !strings.Contains(out, "2 nights past your limit") || strings.Contains(out, "3 nights") {
+		t.Errorf("tonight was counted on debt alone:\n%s", out)
+	}
+}
+
+func TestLocalDayTurnsAtLocalMidnight(t *testing.T) {
+	rome := time.FixedZone("CEST", 2*3600)
+	// 01:00 in Rome is 23:00 UTC the day before. The history keys on the
+	// night you are living in, not the one Greenwich is.
+	at := time.Date(2026, 9, 8, 1, 0, 0, 0, rome)
+	if got, utc := localDay(at), int(at.Unix()/86400); got != utc+1 {
+		t.Errorf("localDay = %d, UTC day = %d, want the local one to be a day ahead", got, utc)
+	}
+	if got := localDay(time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)); got != int(time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC).Unix()/86400) {
+		t.Errorf("at UTC the two agree: got %d", got)
+	}
+}
+
+func TestStatuslineMinutesAreTheOnesWorked(t *testing.T) {
+	// Five hours on the wall clock, but the transcript shows one turn, then a
+	// long silence, then another turn two minutes later. Two minutes of work.
+	isolate(t)
+	cfg := config.FromEnv()
+	path := filepath.Join(t.TempDir(), "t.jsonl")
+	line := func(ts string) string {
+		return `{"type":"user","timestamp":"` + ts + `","message":{"content":"hi"}}`
+	}
+	payload := func() string {
+		return `{"cost":{"total_duration_ms":18000000},"session_id":"s1","transcript_path":"` + path + `"}`
+	}
+	// Stamps in the past: one from the future is dropped on purpose.
+	os.WriteFile(path, []byte(line("2026-01-05T10:00:00Z")+"\n"), 0o644)
+	withStdin(t, payload())
+	out, _ := capture(t, func() int { return runStatusline(cfg) })
+	if !strings.Contains(out, "· 0m ·") {
+		t.Errorf("first refresh should credit nothing yet:\n%s", out)
+	}
+	os.WriteFile(path, []byte(line("2026-01-05T10:00:00Z")+"\n"+line("2026-01-05T14:00:00Z")+"\n"+line("2026-01-05T14:02:00Z")+"\n"), 0o644)
+	withStdin(t, payload())
+	out, _ = capture(t, func() int { return runStatusline(cfg) })
+	if !strings.Contains(out, "· 2m ·") {
+		t.Errorf("four idle hours counted as work:\n%s", out)
 	}
 }
 

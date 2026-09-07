@@ -112,6 +112,13 @@ type Log struct {
 	// left a window open, which poisons the one signal the whole estimate rests
 	// on.
 	Seen int
+	// Credited is the hour (unix/3600) that last earned a count, so a second
+	// turn in the same hour is not a second count. It is kept apart from Hour,
+	// which every call moves: a status row repainting at 14:00 with nothing
+	// new to say used to be told the hour had turned, credit 14:00 with turns
+	// typed at 13:xx, and then have nothing left for the first real turn at
+	// 15:20 — the histogram shifted an hour late in Claude Code.
+	Credited int
 }
 
 // Load reads the log. A missing file is a first run, not an error, and neither
@@ -148,6 +155,8 @@ func Load(path string) Log {
 			l.Hour = atoi(v)
 		case "seen":
 			l.Seen = atoi(v)
+		case "credited":
+			l.Credited = atoi(v)
 		}
 	}
 	return l
@@ -166,6 +175,7 @@ func Save(path string, l Log) error {
 	b.WriteString("day=" + strconv.Itoa(l.Day) + "\n")
 	b.WriteString("hour=" + strconv.Itoa(l.Hour) + "\n")
 	b.WriteString("seen=" + strconv.Itoa(l.Seen) + "\n")
+	b.WriteString("credited=" + strconv.Itoa(l.Credited) + "\n")
 	return atomicfile.Write(path, []byte(b.String()))
 }
 
@@ -183,7 +193,7 @@ func Decayed(l Log, day int) Log {
 		return l
 	}
 
-	next := Log{Day: day, Hour: l.Hour, Seen: l.Seen}
+	next := Log{Day: day, Hour: l.Hour, Seen: l.Seen, Credited: l.Credited}
 	if elapsed >= deadDays {
 		return next // everything has decayed to nothing; start clean
 	}
@@ -221,13 +231,16 @@ func Record(l Log, unix, localHour, marker int) (Log, bool) {
 
 	// One count per hour: a burst of three hundred commands at 15:00 is one
 	// afternoon of being awake at 15:00, and letting it outvote a quiet week
-	// would read intensity as if it were schedule. So the marker is only
-	// consulted at an hour boundary — the only moment it can change anything —
-	// which is also what keeps a busy hour down to a single write.
-	if l.Hour != hour && marker != l.Seen {
+	// would read intensity as if it were schedule. The marker is followed on
+	// every call, so that what counts is the hour the activity happened in,
+	// not the hour a repaint first noticed it; the count itself lands once.
+	if marker != l.Seen {
 		next.Seen = marker
-		if next.Slots[localHour] < maxSlot {
-			next.Slots[localHour] += Weight
+		if l.Credited != hour {
+			next.Credited = hour
+			if next.Slots[localHour] < maxSlot {
+				next.Slots[localHour] += Weight
+			}
 		}
 	}
 

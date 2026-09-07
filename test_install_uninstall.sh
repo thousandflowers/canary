@@ -298,6 +298,122 @@ for glyph in $fresh_art; do
   esac
 done
 
+# --- 5. a build from an export without .git says the manifest's version -----
+# Claude Code keeps its copy of the plugin without .git, so Go cannot read the
+# tag and the binary would say `dev`. The installer stamps the version from
+# .claude-plugin/plugin.json there, which release CI holds equal to the tag.
+export_dir="$TMP/export"; mkdir -p "$export_dir"
+(cd "$HERE" && tar --exclude=.git --exclude=dist -cf - .) | tar -xf - -C "$export_dir"
+manifest_v=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/.claude-plugin/plugin.json")
+h=$(newhome); mkdir -p "$h/.claude"; echo '{}' > "$h/.claude/settings.json"
+env HOME="$h" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$h/.claude" \
+    GOPATH="$GOPATH_REAL" GOCACHE="$GOCACHE_REAL" GOMODCACHE="$GOMODCACHE_REAL" \
+    sh "$export_dir/install.sh" --claude-only >/dev/null 2>&1
+assert_eq "export-build-version" "$("$(bin_of "$h")" version)" "canary $manifest_v"
+
+# `sh install.sh` from inside the checkout, no ./ in front, must still build:
+# $0 has no slash then, and the source lookup used to give up and download.
+h=$(newhome); mkdir -p "$h/.claude"; echo '{}' > "$h/.claude/settings.json"
+bare=$(cd "$HERE" && env HOME="$h" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$h/.claude" \
+    GOPATH="$GOPATH_REAL" GOCACHE="$GOCACHE_REAL" GOMODCACHE="$GOMODCACHE_REAL" \
+    sh install.sh --claude-only 2>&1)
+assert_has "bare-name-builds" "$bare" "building from source"
+
+# A build that fails must say so and exit non-zero. It used to return 0 with
+# the old binary still in place and "status line wired" printed underneath:
+# the installer signing off on work it had not done.
+bad_dir="$TMP/export-bad"; mkdir -p "$bad_dir"
+(cd "$export_dir" && tar -cf - .) | tar -xf - -C "$bad_dir"
+echo 'this is not go' >> "$bad_dir/cmd/canary/main.go"
+h=$(newhome); mkdir -p "$h/.claude"; echo '{}' > "$h/.claude/settings.json"
+if out=$(env HOME="$h" SHELL=/bin/bash CLAUDE_CONFIG_DIR="$h/.claude" \
+    GOPATH="$GOPATH_REAL" GOCACHE="$GOCACHE_REAL" GOMODCACHE="$GOMODCACHE_REAL" \
+    sh "$bad_dir/install.sh" --claude-only 2>&1); then
+  echo "FAIL [bad-build-exit]: a failed build exited 0"; fails=$((fails+1))
+fi
+assert_has "bad-build-says-so" "$out" "the build failed"
+assert_no  "bad-build-no-wire" "$out" "status line wired"
+[ -e "$(bin_of "$h")" ] && { echo "FAIL [bad-build-no-binary]: a failed build left a binary behind"; fails=$((fails+1)); }
+[ -z "$(ls "$h/.local/bin" 2>/dev/null)" ] || { echo "FAIL [bad-build-no-tmp]: a failed build left a staged file behind"; fails=$((fails+1)); }
+
+# --- 6. the plugin hook: install once, keep its own binary current, touch nothing else
+hook="$export_dir/hooks/session-start.sh"
+# PATH with Go but no canary on it, the way a Claude Code launched from the Dock
+# sees it. Go is linked into a directory of its own: on a Homebrew machine it
+# shares one with an installed canary, which would make the cold start warm.
+mkdir -p "$TMP/gobin"; ln -s "$(command -v go)" "$TMP/gobin/go"
+bare_path="/usr/bin:/bin:$TMP/gobin"
+run_hook() { env HOME="$1" PATH="$2" CLAUDE_PLUGIN_ROOT="$export_dir" CLAUDE_CONFIG_DIR="$1/.claude" \
+                 GOPATH="$GOPATH_REAL" GOCACHE="$GOCACHE_REAL" GOMODCACHE="$GOMODCACHE_REAL" \
+                 sh "$hook" 2>&1; }
+
+# The hook fetches the release binary rather than building one, and a test
+# that hits the network is not a test. So: no curl on PATH, which is the one
+# failure the fetch has, and the hook must say so rather than stay silent.
+mkdir -p "$TMP/nocurl"; ln -s "$(command -v go)" "$TMP/nocurl/go"
+for tool in sh sed mkdir cat printf mv rm cp chmod dirname basename mktemp tar uname; do
+  p=$(command -v "$tool") && ln -sf "$p" "$TMP/nocurl/$tool"
+done
+h=$(newhome); mkdir -p "$h/.claude"; echo '{}' > "$h/.claude/settings.json"
+out=$(run_hook "$h" "$TMP/nocurl")
+assert_has "hook-cold-says-so" "$out" "install failed"
+[ -e "$(bin_of "$h")" ] && { echo "FAIL [hook-cold-half]: a failed fetch left a binary"; fails=$((fails+1)); }
+[ -e "$h/.canary/plugin-version" ] && { echo "FAIL [hook-cold-stamp]: a failed install was stamped"; fails=$((fails+1)); }
+[ -f "$h/.bashrc" ] && { echo "FAIL [hook-cold-rc]: the hook wired a shell rc"; fails=$((fails+1)); }
+
+# The fetch, without the network: a curl on PATH that hands back a release
+# archive made from the export build. The installer's own download path runs
+# unchanged — the URL it asks for is simply answered from disk.
+mkdir -p "$TMP/fakecurl" "$TMP/rel"
+(cd "$export_dir" && go build "-ldflags=-X main.version=$manifest_v" -o "$TMP/rel/canary" ./cmd/canary) # stamped, as goreleaser does
+(cd "$TMP/rel" && tar -czf "$TMP/release.tar.gz" canary)
+printf '#!/bin/sh\ncat "%s"\n' "$TMP/release.tar.gz" > "$TMP/fakecurl/curl"; chmod +x "$TMP/fakecurl/curl"
+fetch_path="$TMP/fakecurl:$bare_path"
+
+# A binary already at the installer's path, put there by the one-liner or a
+# clone, is the plugin's to keep current: adopted, wired and stamped, with the
+# rc left alone. (Replaced here because the stamp is missing.)
+h=$(newhome); mkdir -p "$h/.claude" "$h/.local/bin"; echo '{}' > "$h/.claude/settings.json"
+printf '#!/bin/sh\necho canary 0.9.0\n' > "$(bin_of "$h")"; chmod +x "$(bin_of "$h")"
+out=$(run_hook "$h" "$fetch_path")
+assert_eq  "hook-adopt-silent"  "$out" ""
+assert_eq  "hook-adopt-version" "$("$(bin_of "$h")" version)" "canary $manifest_v"
+assert_has "hook-adopt-wired"   "$(cat "$h/.claude/settings.json")" "statusline"
+assert_eq  "hook-adopt-stamp"   "$(cat "$h/.canary/plugin-version")" "$manifest_v"
+[ -f "$h/.bashrc" ] && { echo "FAIL [hook-adopt-rc]: the hook wired a shell rc"; fails=$((fails+1)); }
+
+# warm: the stamp matches → the binary is not touched. A sentinel in its place proves it.
+printf '#!/bin/sh\necho canary sentinel\n' > "$(bin_of "$h")"; chmod +x "$(bin_of "$h")"
+before=$(cat "$h/.claude/settings.json")
+out=$(run_hook "$h" "$bare_path")
+assert_eq "hook-warm-silent"    "$out" ""
+assert_eq "hook-warm-untouched" "$("$(bin_of "$h")" version)" "canary sentinel"
+assert_eq "hook-warm-settings"  "$(cat "$h/.claude/settings.json")" "$before"
+
+# a plugin update: the stamp is behind the manifest → its own binary is replaced
+echo "0.0.1" > "$h/.canary/plugin-version"
+out=$(run_hook "$h" "$fetch_path")
+assert_eq "hook-upgrade-silent"  "$out" ""
+assert_eq "hook-upgrade-version" "$("$(bin_of "$h")" version)" "canary $manifest_v"
+assert_eq "hook-upgrade-stamp"   "$(cat "$h/.canary/plugin-version")" "$manifest_v"
+
+# a settings.json it will not touch (comments in it): the hook says so instead of
+# staying silent about a status line that never appeared
+h2=$(newhome); mkdir -p "$h2/.claude" "$h2/.local/bin" "$h2/.canary"
+printf '// mine\n{}\n' > "$h2/.claude/settings.json"
+cp "$(bin_of "$h")" "$(bin_of "$h2")"; echo "$manifest_v" > "$h2/.canary/plugin-version"
+out=$(run_hook "$h2" "$bare_path")
+assert_has "hook-untouched-says-so" "$out" "left untouched"
+assert_eq  "hook-untouched-left"    "$(cat "$h2/.claude/settings.json")" "$(printf '// mine\n{}')"
+
+# somebody else's binary on PATH (Homebrew, go install): wired, never reinstalled, no stamp
+h=$(newhome); mkdir -p "$h/.claude" "$h/brew"; echo '{}' > "$h/.claude/settings.json"
+printf '#!/bin/sh\n[ "$1" = version ] && echo canary 9.9.9\nexit 0\n' > "$h/brew/canary"; chmod +x "$h/brew/canary"
+out=$(run_hook "$h" "$h/brew:$bare_path")
+assert_eq "hook-foreign-silent" "$out" ""
+[ -e "$(bin_of "$h")" ]        && { echo "FAIL [hook-foreign-installed]: reinstalled over somebody else's binary"; fails=$((fails+1)); }
+[ -e "$h/.canary/plugin-version" ] && { echo "FAIL [hook-foreign-stamp]: stamped a binary it does not own"; fails=$((fails+1)); }
+
 # render.Frames(Fresh) is the pattern the installer sings while it works
 mixed=$(grep 'mixedFrames *=' "$HERE/internal/render/animate.go" | grep -o '"[^"]*"' | tr -d '"')
 for f in $mixed; do
