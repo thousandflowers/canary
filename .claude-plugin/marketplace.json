@@ -1,0 +1,22 @@
+{
+  "name": "canary",
+  "description": "A pixel-art bird that wilts in Claude Code's status line while you work.",
+  "owner": {
+    "name": "thousandflowers",
+    "url": "https://github.com/thousandflowers"
+  },
+  "plugins": [
+    {
+      "name": "canary",
+      "source": "./",
+      "description": "A pixel-art bird that wilts in Claude Code's status line while you work. Installs the binary on first session start and wires the status line; your shell rc is left alone.",
+      "category": "productivity",
+      "tags": [
+        "status-line",
+        "fatigue",
+        "break-reminder",
+        "pixel-art"
+      ]
+    }
+  ]
+}

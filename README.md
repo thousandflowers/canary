@@ -48,6 +48,18 @@ curl -fsSL https://raw.githubusercontent.com/thousandflowers/canary/main/install
 
 ![the installer, singing the step it is on](assets/install.gif)
 
+Or as a Claude Code plugin, for the status line bird alone. Inside Claude Code:
+
+```
+/plugin marketplace add thousandflowers/canary
+/plugin install canary@canary
+```
+
+The next session start installs the binary if there is none (built from
+source when Go is around, the release binary otherwise) and wires the status
+line. Your shell rc is never touched. `/plugin uninstall canary@canary` and
+`canary settings remove` take it back out.
+
 Runs on zsh, bash and fish, macOS and Linux, amd64 and arm64, in any UTF-8
 terminal. **No Windows build.** The bird lives in a POSIX shell hook, so
 Windows means WSL, running the Linux binary. CI drives the hooks in a real

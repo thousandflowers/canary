@@ -83,9 +83,10 @@ jobs:
             | sudo tar -xJ --strip-components=1 -C /usr/local/bin "shellcheck-${SC_VERSION}/shellcheck"
           shellcheck --version
       - name: lint the scripts that are left
-        # The installer is the only shell canary still ships: a `curl | sh`
-        # bootstrap cannot be written in the language it is bootstrapping.
-        run: shellcheck -x install.sh uninstall.sh test_install_uninstall.sh
+        # The installer and the plugin hook are the only shell canary still
+        # ships: a `curl | sh` bootstrap cannot be written in the language it
+        # is bootstrapping, and a Claude Code hook is a shell command by design.
+        run: shellcheck -x install.sh uninstall.sh test_install_uninstall.sh hooks/session-start.sh
 
   shells:
     name: shells (${{ matrix.os }})
